@@ -1,4 +1,4 @@
-// app/api/poll/route.ts
+// app/api/poll/route.ts (Enhanced)
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
@@ -6,11 +6,12 @@ import { laneClosures, apiRequestLogs } from '@/lib/auth/schema';
 import { eq, sql } from 'drizzle-orm';
 import axios from 'axios';
 
-export const maxDuration = 60; // 60 seconds for serverless function
+export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-// Polling lock to prevent concurrent runs
 let isPolling = false;
+let lastPollTime: Date | null = null;
+let lastPollStats: any = null;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -23,6 +24,8 @@ export async function GET(request: Request) {
       return handleStatus();
     case 'cleanup':
       return handleCleanup();
+    case 'stats':
+      return handlePollStats();
     default:
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   }
@@ -31,7 +34,7 @@ export async function GET(request: Request) {
 async function handlePoll() {
   if (isPolling) {
     return NextResponse.json(
-      { error: 'Polling already in progress', status: 'busy' },
+      { error: 'Polling already in progress', status: 'busy', lastPoll: lastPollTime },
       { status: 409 }
     );
   }
@@ -41,26 +44,31 @@ async function handlePoll() {
   
   try {
     const connectionString = process.env.DATABASE_URL!;
-    const sql = neon(connectionString);
-    const db = drizzle(sql);
+    const sqlClient = neon(connectionString);
+    const db = drizzle(sqlClient);
     
     const districts = (process.env.CALTRANS_DISTRICTS || '1,2,3,4,5,6,7,8,9,10,11,12')
       .split(',')
       .map(d => parseInt(d.trim()));
     
     let totalClosures = 0;
-    const results: Record<number, number> = {};
+    let totalNew = 0;
+    let totalUpdated = 0;
+    const results: Record<number, { processed: number; new: number; updated: number }> = {};
     
     for (const district of districts) {
-      // Add delay between districts
       await new Promise(resolve => setTimeout(resolve, 500));
       
       const result = await fetchDistrictData(district, db);
       totalClosures += result.processed;
-      results[district] = result.processed;
+      totalNew += result.new;
+      totalUpdated += result.updated;
+      results[district] = result;
     }
     
     const duration = Date.now() - startTime;
+    lastPollTime = new Date();
+    lastPollStats = { totalClosures, totalNew, totalUpdated, results, duration };
     
     // Take snapshot on the hour
     const now = new Date();
@@ -72,6 +80,8 @@ async function handlePoll() {
       success: true,
       stats: {
         totalClosures,
+        totalNew,
+        totalUpdated,
         results,
         duration,
         timestamp: now.toISOString()
@@ -117,19 +127,24 @@ async function fetchDistrictData(district: number, db: any) {
     
     if (response.status === 404 || !response.data?.lcsClosures) {
       console.log(`No data for District ${district}`);
-      return { processed: 0 };
+      return { processed: 0, new: 0, updated: 0 };
     }
     
     console.log(`✓ District ${district}: ${response.data.lcsClosures.length} closures`);
     
     // Process closures
     let processed = 0;
+    let newCount = 0;
+    let updatedCount = 0;
+    
     for (const closure of response.data.lcsClosures) {
-      await upsertClosure(db, district, closure);
+      const result = await upsertClosure(db, district, closure);
       processed++;
+      if (result === 'new') newCount++;
+      if (result === 'updated') updatedCount++;
     }
     
-    return { processed };
+    return { processed, new: newCount, updated: updatedCount };
     
   } catch (error) {
     const responseTime = Date.now() - startTime;
@@ -142,11 +157,11 @@ async function fetchDistrictData(district: number, db: any) {
     });
     
     console.error(`✗ District ${district} failed:`, error);
-    return { processed: 0 };
+    return { processed: 0, new: 0, updated: 0 };
   }
 }
 
-async function upsertClosure(db: any, district: number, closure: any) {
+async function upsertClosure(db: any, district: number, closure: any): Promise<'new' | 'updated' | 'skipped'> {
   const sourceId = closure.lcsClosureID || 
     `${district}_${closure.route}_${closure.startDate}_${closure.startTime}`;
   
@@ -189,20 +204,30 @@ async function upsertClosure(db: any, district: number, closure: any) {
     .limit(1);
   
   if (existing.length > 0) {
-    // Update
-    await db
-      .update(laneClosures)
-      .set({
-        ...closureData,
-        timesSeen: sql`${laneClosures.timesSeen} + 1`,
-        lastModified: new Date(),
-      })
-      .where(eq(laneClosures.sourceId, sourceId));
-    console.log(`  ↻ Updated ${sourceId}`);
+    // Only update if status changed or significant time passed
+    const shouldUpdate = existing[0].status !== status || 
+                        (Date.now() - new Date(existing[0].lastSeen).getTime()) > 3600000;
+    
+    if (shouldUpdate) {
+      await db
+        .update(laneClosures)
+        .set({
+          ...closureData,
+          timesSeen: sql`${laneClosures.timesSeen} + 1`,
+          lastModified: new Date(),
+        })
+        .where(eq(laneClosures.sourceId, sourceId));
+      console.log(`  ↻ Updated ${sourceId} (status: ${existing[0].status} → ${status})`);
+      return 'updated';
+    } else {
+      console.log(`  ○ Skipped ${sourceId} (no changes)`);
+      return 'skipped';
+    }
   } else {
-    // Insert
+    // Insert new
     await db.insert(laneClosures).values(closureData);
     console.log(`  ✨ New ${sourceId}`);
+    return 'new';
   }
 }
 
@@ -221,14 +246,28 @@ function determineStatus(closure: any): 'active' | 'completed' | 'cancelled' {
 
 async function handleStatus() {
   const connectionString = process.env.DATABASE_URL!;
-  const sql = neon(connectionString);
-  const db = drizzle(sql);
+  const sqlClient = neon(connectionString);
+  const db = drizzle(sqlClient);
   
-  // Get active closures count
-  const activeCount = await db
-    .select({ count: sql<number>`COUNT(*)` })
+  // Get counts by status
+  const statusCounts = await db
+    .select({
+      status: laneClosures.status,
+      count: sql<number>`COUNT(*)`,
+    })
     .from(laneClosures)
-    .where(eq(laneClosures.status, 'active'));
+    .groupBy(laneClosures.status);
+  
+  // Get active closures by district
+  const activeByDistrict = await db
+    .select({
+      district: laneClosures.district,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(laneClosures)
+    .where(eq(laneClosures.status, 'active'))
+    .groupBy(laneClosures.district)
+    .orderBy(laneClosures.district);
   
   // Get API health
   const health = await db
@@ -243,18 +282,24 @@ async function handleStatus() {
   
   return NextResponse.json({
     success: true,
-    active_closures: activeCount[0]?.count || 0,
+    stats: {
+      status_counts: statusCounts,
+      active_by_district: activeByDistrict,
+      total_active: activeByDistrict.reduce((sum, d) => sum + (d.count || 0), 0),
+    },
     api_health: health[0],
+    last_poll: lastPollTime,
+    last_poll_stats: lastPollStats,
     timestamp: new Date().toISOString()
   });
 }
 
 async function handleCleanup() {
   const connectionString = process.env.DATABASE_URL!;
-  const sql = neon(connectionString);
-  const db = drizzle(sql);
+  const sqlClient = neon(connectionString);
+  const db = drizzle(sqlClient);
   
-  // Archive old closures
+  // Archive old closures (mark as completed)
   const archived = await db
     .update(laneClosures)
     .set({ status: 'completed' })
@@ -263,7 +308,7 @@ async function handleCleanup() {
     )
     .returning();
   
-  // Delete old logs
+  // Delete old API logs
   const deleted = await db
     .delete(apiRequestLogs)
     .where(sql`${apiRequestLogs.requestTimestamp} < NOW() - INTERVAL '30 days'`)
@@ -277,22 +322,29 @@ async function handleCleanup() {
   });
 }
 
+async function handlePollStats() {
+  return NextResponse.json({
+    success: true,
+    last_poll: lastPollTime,
+    last_poll_stats: lastPollStats,
+    is_polling: isPolling
+  });
+}
+
 async function takeSnapshot(db: any) {
-  console.log('📸 Taking snapshot...');
+  console.log('📸 Taking hourly snapshot...');
   
   const stats = await db
     .select({
       district: laneClosures.district,
       totalClosures: sql<number>`COUNT(*)`,
       activeCount: sql<number>`COUNT(CASE WHEN ${laneClosures.status} = 'active' THEN 1 END)`,
-      closuresByType: sql<any>`jsonb_agg(DISTINCT ${laneClosures.closureType})`,
-      closuresByRoute: sql<any>`jsonb_agg(DISTINCT ${laneClosures.route})`,
+      completedCount: sql<number>`COUNT(CASE WHEN ${laneClosures.status} = 'completed' THEN 1 END)`,
+      byType: sql<any>`jsonb_object_agg(${laneClosures.closureType}, COUNT(*))`,
     })
     .from(laneClosures)
     .groupBy(laneClosures.district);
   
-  // Insert into snapshots table (you'll need to create this)
-  // await db.insert(laneClosuresSnapshots).values(...);
-  
   console.log(`✅ Snapshot recorded: ${stats.length} districts`);
+  // Note: You'll need a lane_closures_snapshots table to store these
 }

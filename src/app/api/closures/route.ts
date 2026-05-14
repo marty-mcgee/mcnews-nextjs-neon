@@ -1,9 +1,9 @@
-// app/api/closures/route.ts
+// app/api/closures/route.ts (Enhanced)
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
-import { laneClosures, caltransDistricts } from '@/lib/auth/schema';
-import { eq, ilike, sql } from 'drizzle-orm';
+import { laneClosures } from '@/lib/auth/schema';
+import { eq, sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,65 +14,107 @@ export async function GET(request: Request) {
   const route = searchParams.get('route');
   const county = searchParams.get('county');
   const status = searchParams.get('status') || 'active';
-  const limit = parseInt(searchParams.get('limit') || '100');
+  const limit = parseInt(searchParams.get('limit') || '50');
+  const offset = parseInt(searchParams.get('offset') || '0');
+  const sortBy = searchParams.get('sortBy') || 'endDate';
+  const sortOrder = searchParams.get('sortOrder') || 'ASC';
   
   try {
     const connectionString = process.env.DATABASE_URL!;
-    const sql = neon(connectionString);
-    const db = drizzle(sql);
+    const sqlClient = neon(connectionString);
+    const db = drizzle(sqlClient);
     
-    let query = db
-      .select({
-        closureId: laneClosures.closureId,
-        district: laneClosures.district,
-        districtName: caltransDistricts.districtName,
-        route: laneClosures.route,
-        direction: laneClosures.direction,
-        closureType: laneClosures.closureType,
-        lanesAffected: laneClosures.lanesAffected,
-        description: laneClosures.description,
-        latitude: laneClosures.latitude,
-        longitude: laneClosures.longitude,
-        startDate: laneClosures.startDate,
-        endDate: laneClosures.endDate,
-        status: laneClosures.status,
-        lastSeen: laneClosures.lastSeen,
-        hoursRemaining: sql<number>`EXTRACT(EPOCH FROM (${laneClosures.endTimestamp} - NOW()))/3600`,
-      })
-      .from(laneClosures)
-      .leftJoin(caltransDistricts, eq(laneClosures.district, caltransDistricts.districtId))
-      .where(eq(laneClosures.status, status));
+    // Build query
+    let query = db.select().from(laneClosures);
+    const conditions = [];
+    
+    if (status) {
+      conditions.push(eq(laneClosures.status, status));
+    }
     
     if (district) {
-      query = query.where(eq(laneClosures.district, parseInt(district)));
+      conditions.push(eq(laneClosures.district, parseInt(district)));
     }
     
     if (route) {
-      query = query.where(ilike(laneClosures.route, `%${route}%`));
+      conditions.push(sql`${laneClosures.route} ILIKE ${`%${route}%`}`);
     }
     
     if (county) {
-      query = query.where(eq(laneClosures.county, county));
+      conditions.push(eq(laneClosures.county, county));
     }
     
-    const closures = await query
-      .orderBy(laneClosures.endDate)
-      .limit(limit);
+    // Apply conditions
+    if (conditions.length > 0) {
+      query = query.where(conditions[0]);
+      for (let i = 1; i < conditions.length; i++) {
+        query = query.where(conditions[i]);
+      }
+    }
+    
+    // Get total count
+    let countQuery = db.select({ count: sql<number>`COUNT(*)` }).from(laneClosures);
+    if (conditions.length > 0) {
+      countQuery = countQuery.where(conditions[0]);
+      for (let i = 1; i < conditions.length; i++) {
+        countQuery = countQuery.where(conditions[i]);
+      }
+    }
+    const totalResult = await countQuery;
+    const total = Number(totalResult[0]?.count || 0);
+    
+    // Apply sorting
+    const sortColumn = sortBy === 'endDate' ? laneClosures.endDate : 
+                      sortBy === 'startDate' ? laneClosures.startDate :
+                      sortBy === 'createdAt' ? laneClosures.createdAt :
+                      laneClosures.endDate;
+    
+    const orderedQuery = sortOrder === 'DESC' 
+      ? query.orderBy(sql`${sortColumn} DESC`)
+      : query.orderBy(sql`${sortColumn} ASC`);
+    
+    // Apply pagination
+    const closures = await orderedQuery.offset(offset).limit(limit);
+    
+    // Enhance with calculated fields
+    const closuresWithMeta = closures.map(closure => ({
+      ...closure,
+      hoursRemaining: closure.endTimestamp 
+        ? Math.max(0, (new Date(closure.endTimestamp).getTime() - Date.now()) / (1000 * 60 * 60))
+        : null,
+      isExpiringSoon: closure.endTimestamp 
+        ? (new Date(closure.endTimestamp).getTime() - Date.now()) < (24 * 60 * 60 * 1000)
+        : false,
+      daysRemaining: closure.endTimestamp
+        ? Math.max(0, (new Date(closure.endTimestamp).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+        : null
+    }));
     
     return NextResponse.json({
       success: true,
-      data: closures,
-      meta: {
-        total: closures.length,
+      data: closuresWithMeta,
+      pagination: {
+        total,
         limit,
-        filters: { district, route, county, status }
+        offset,
+        hasMore: offset + limit < total,
+        totalPages: Math.ceil(total / limit),
+        currentPage: Math.floor(offset / limit) + 1
+      },
+      meta: {
+        filters: { district, route, county, status },
+        sort: { sortBy, sortOrder },
+        timestamp: new Date().toISOString()
       }
     });
     
   } catch (error) {
     console.error('Query error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch closures' },
+      { 
+        error: 'Failed to fetch closures', 
+        details: error instanceof Error ? error.message : String(error)
+      },
       { status: 500 }
     );
   }

@@ -1,6 +1,6 @@
 {
   "name": "mcnews-nextjs-neon",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,6 +9,10 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
+    "db:seed": "curl -X GET http://localhost:3000/api/seed",
+    "db:poll": "curl -X GET http://localhost:3000/api/poll?action=poll",
+    "db:status": "curl -X GET http://localhost:3000/api/poll?action=status",
+    "db:cleanup": "curl -X GET http://localhost:3000/api/poll?action=cleanup",
     "auth:generate": "npx @better-auth/cli@latest generate --config src/lib/auth/server.ts --output src/lib/auth/schema.ts"
   },
   "dependencies": {

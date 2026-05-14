@@ -1,0 +1,16 @@
+{
+  "functions": {
+    "app/api/poll/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/cron/poll/route.ts": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/poll",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

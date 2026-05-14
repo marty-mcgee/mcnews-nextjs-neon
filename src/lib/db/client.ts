@@ -28,3 +28,8 @@ export async function checkDbConnection(): Promise<string> {
     return "Database not connected";
   }
 }
+
+// ### CalTrans
+
+// Type helper for transactions
+export type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];

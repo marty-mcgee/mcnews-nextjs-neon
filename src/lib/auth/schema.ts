@@ -13,7 +13,8 @@ import {
   jsonb,
   uniqueIndex,
   foreignKey,
-  pgSchema
+  pgSchema,
+  numeric,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 // ### CalTrans
@@ -217,3 +218,22 @@ export type NewLaneClosure = typeof laneClosures.$inferInsert;
 export type ApiRequestLog = typeof apiRequestLogs.$inferSelect;
 export type NewApiRequestLog = typeof apiRequestLogs.$inferInsert;
 export type CaltransDistrict = typeof caltransDistricts.$inferSelect;
+
+// db/schema.ts (Add this table)
+export const chpCollisions = pgTable('chp_collisions', {
+  id: serial('id').primaryKey(),
+  caseId: varchar('case_id', { length: 50 }).unique(),
+  collisionDate: timestamp('collision_date'),
+  collisionYear: integer('collision_year'),
+  severity: varchar('severity', { length: 50 }), // Fatal, Injury, Property Damage
+  county: varchar('county', { length: 100 }),
+  city: varchar('city', { length: 100 }),
+  location: text('location'),
+  latitude: numeric('latitude').$type<number>(),
+  longitude: numeric('longitude').$type<number>(),
+  primaryFactor: text('primary_factor'),
+  weather: varchar('weather', { length: 50 }),
+  lighting: varchar('lighting', { length: 50 }),
+  rawData: jsonb('raw_data'),
+  fetchedAt: timestamp('fetched_at').defaultNow(),
+});

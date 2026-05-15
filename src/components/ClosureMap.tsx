@@ -1,12 +1,13 @@
-// app/components/ClosureMap.tsx
+// app/components/ClosureMap.tsx (Add onClick handler)
 'use client';
 
 import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { useRouter } from 'next/navigation';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// Fix for default marker icons in Next.js
+// Fix for default marker icons
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: '/marker-icon-2x.png',
@@ -14,7 +15,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: '/marker-shadow.png',
 });
 
-// Custom marker icons for different closure types
 const getMarkerIcon = (closureType: string) => {
   const color = closureType?.includes('Closure') 
     ? 'red' 
@@ -34,6 +34,7 @@ const getMarkerIcon = (closureType: string) => {
       justify-content: center;
       border: 2px solid white;
       box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      cursor: pointer;
     ">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2">
         <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
@@ -44,7 +45,6 @@ const getMarkerIcon = (closureType: string) => {
   });
 };
 
-// Component to handle map view updates
 function MapUpdater({ center, zoom }: { center: [number, number]; zoom: number }) {
   const map = useMap();
   useEffect(() => {
@@ -71,15 +71,14 @@ interface ClosureMapProps {
 }
 
 export default function ClosureMap({ closures, selectedDistrict }: ClosureMapProps) {
-  const [mapCenter, setMapCenter] = useState<[number, number]>([36.7783, -119.4179]); // California center
+  const router = useRouter();
+  const [mapCenter, setMapCenter] = useState<[number, number]>([36.7783, -119.4179]);
   const [mapZoom, setMapZoom] = useState(6);
 
-  // Filter closures that have valid coordinates
   const validClosures = closures.filter(
     c => c.latitude && c.longitude && c.status === 'active'
   );
 
-  // Calculate map bounds to show all markers
   useEffect(() => {
     if (validClosures.length > 0) {
       const lats = validClosures.map(c => c.latitude!);
@@ -89,12 +88,10 @@ export default function ClosureMap({ closures, selectedDistrict }: ClosureMapPro
       const minLng = Math.min(...lngs);
       const maxLng = Math.max(...lngs);
       
-      // Center on the middle of all markers
       const centerLat = (minLat + maxLat) / 2;
       const centerLng = (minLng + maxLng) / 2;
       setMapCenter([centerLat, centerLng]);
       
-      // Adjust zoom based on spread
       const latDiff = maxLat - minLat;
       const lngDiff = maxLng - minLng;
       const maxDiff = Math.max(latDiff, lngDiff);
@@ -104,11 +101,12 @@ export default function ClosureMap({ closures, selectedDistrict }: ClosureMapPro
       else if (maxDiff < 2) setMapZoom(8);
       else if (maxDiff < 4) setMapZoom(7);
       else setMapZoom(6);
-    } else {
-      setMapCenter([36.7783, -119.4179]);
-      setMapZoom(6);
     }
   }, [validClosures]);
+
+  const handleMarkerClick = (closureId: number) => {
+    router.push(`/closure/${closureId}`);
+  };
 
   if (typeof window === 'undefined') {
     return <div className="h-full flex items-center justify-center bg-gray-100">Loading map...</div>;
@@ -124,18 +122,19 @@ export default function ClosureMap({ closures, selectedDistrict }: ClosureMapPro
       >
         <MapUpdater center={mapCenter} zoom={mapZoom} />
         
-        {/* OpenStreetMap tiles */}
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         
-        {/* Markers for each closure */}
         {validClosures.map((closure) => (
           <Marker
             key={closure.closure_id}
             position={[closure.latitude!, closure.longitude!]}
             icon={getMarkerIcon(closure.closure_type)}
+            eventHandlers={{
+              click: () => handleMarkerClick(closure.closure_id),
+            }}
           >
             <Popup>
               <div className="min-w-[200px]">
@@ -160,17 +159,14 @@ export default function ClosureMap({ closures, selectedDistrict }: ClosureMapPro
                     {new Date(closure.end_date).toLocaleDateString()}
                   </p>
                   <p className="text-gray-600 mt-2">
-                    {closure.description?.substring(0, 150)}
-                    {closure.description?.length > 150 ? '...' : ''}
+                    {closure.description?.substring(0, 120)}
+                    {closure.description?.length > 120 ? '...' : ''}
                   </p>
                   <button
-                    onClick={() => {
-                      // You can add navigation to details here
-                      window.location.href = `/closure/${closure.closure_id}`;
-                    }}
-                    className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    onClick={() => handleMarkerClick(closure.closure_id)}
+                    className="mt-2 w-full bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition"
                   >
-                    View Details →
+                    View Full Details →
                   </button>
                 </div>
               </div>
@@ -178,9 +174,8 @@ export default function ClosureMap({ closures, selectedDistrict }: ClosureMapPro
           </Marker>
         ))}
         
-        {/* No markers message */}
         {validClosures.length === 0 && (
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white bg-opacity-90 p-4 rounded-lg shadow-lg z-1000">
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white bg-opacity-90 p-4 rounded-lg shadow-lg z-[1000]">
             <p className="text-gray-600">
               No closures with location data available
               {selectedDistrict && ` in District ${selectedDistrict}`}

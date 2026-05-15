@@ -1,8 +1,9 @@
-// app/dashboard/page.tsx (Updated with Map Tab)
+// app/dashboard/page.tsx (Updated with Combined View)
 'use client';
 
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
 
 // Dynamically import the map component to avoid SSR issues
 const ClosureMap = dynamic(() => import('@/components/ClosureMap'), {
@@ -34,16 +35,20 @@ interface Closure {
   created_at: string;
 }
 
-type ViewType = 'table' | 'map';
+type ViewType = 'table' | 'map' | 'combined';
 
 export default function Dashboard() {
+  // Inside the component:
+  const router = useRouter();
+
   const [closures, setClosures] = useState<Closure[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDistrict, setSelectedDistrict] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'active' | 'completed' | 'all'>('active');
-  const [viewType, setViewType] = useState<ViewType>('table');
+  const [viewType, setViewType] = useState<ViewType>('combined');
   const [isPolling, setIsPolling] = useState(false);
+  const [selectedClosure, setSelectedClosure] = useState<Closure | null>(null);
 
   // Fetch data
   useEffect(() => {
@@ -162,6 +167,7 @@ export default function Dashboard() {
   const stats = getStats();
   const districtStats = getDistrictStats();
   const filteredClosures = getFilteredClosures();
+  const closuresWithCoordinates = filteredClosures.filter(c => c.latitude && c.longitude);
 
   if (loading) {
     return (
@@ -197,7 +203,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b">
+      <div className="bg-white shadow-sm border-b sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex justify-between items-center flex-wrap gap-4">
             <div>
@@ -309,7 +315,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* View Toggle */}
+        {/* Status Tabs */}
         <div className="bg-white rounded-lg shadow mb-6">
           <div className="border-b">
             <nav className="flex -mb-px">
@@ -369,12 +375,12 @@ export default function Dashboard() {
           </div>
           
           {/* View Type Toggle */}
-          <div className="px-6 py-3 border-b bg-gray-50 flex justify-between items-center">
+          <div className="px-6 py-3 border-b bg-gray-50 flex justify-between items-center flex-wrap gap-3">
             <div className="flex items-center gap-2">
               <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6" />
               </svg>
-              <span className="text-sm text-gray-600">View as:</span>
+              <span className="text-sm text-gray-600">Display mode:</span>
             </div>
             <div className="flex gap-2">
               <button
@@ -388,7 +394,7 @@ export default function Dashboard() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
-                Table View
+                Table Only
               </button>
               <button
                 onClick={() => setViewType('map')}
@@ -401,7 +407,21 @@ export default function Dashboard() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                 </svg>
-                Map View
+                Map Only
+              </button>
+              <button
+                onClick={() => setViewType('combined')}
+                className={`px-4 py-2 text-sm rounded-lg transition flex items-center gap-2 ${
+                  viewType === 'combined'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6v12" />
+                </svg>
+                Map + Table
               </button>
             </div>
           </div>
@@ -442,145 +462,267 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Content Area - Table or Map */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          {viewType === 'table' ? (
-            <>
-              <div className="px-6 py-4 border-b bg-gray-50">
+        {/* Combined Map + Table View */}
+        {viewType === 'combined' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Map Section */}
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="px-4 py-3 border-b bg-gray-50">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
+                  <h3 className="font-semibold text-gray-900">Map View</h3>
+                  <span className="text-xs text-gray-500">
+                    ({closuresWithCoordinates.length} closures with coordinates)
+                  </span>
+                </div>
+              </div>
+              <div className="h-[500px] w-full">
+                <ClosureMap 
+                  closures={filteredClosures} 
+                  selectedDistrict={selectedDistrict || undefined}
+                />
+              </div>
+            </div>
+
+            {/* Table Section */}
+            <div className="bg-white rounded-lg shadow overflow-hidden flex flex-col">
+              <div className="px-4 py-3 border-b bg-gray-50">
                 <div className="flex items-center gap-2">
                   <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    {activeTab === 'active' && 'Active Lane Closures'}
-                    {activeTab === 'completed' && 'Completed Closures'}
-                    {activeTab === 'all' && 'All Closures'}
-                  </h2>
+                  <h3 className="font-semibold text-gray-900">Data Table</h3>
+                  <span className="text-xs text-gray-500">
+                    ({filteredClosures.length} records)
+                  </span>
                 </div>
-                <p className="text-sm text-gray-500 mt-1 ml-7">
-                  Showing {filteredClosures.length} of {activeTab === 'all' ? stats.total : activeTab === 'active' ? stats.active : stats.completed} records
-                </p>
               </div>
-              
-              {filteredClosures.length === 0 ? (
-                <div className="p-12 text-center text-gray-500">
-                  <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-lg">No records found</p>
-                  <p className="text-sm mt-2">
-                    {stats.total === 0 
-                      ? 'Database is empty. Click "Fetch Latest Data" to get real Caltrans information.'
-                      : `No ${activeTab} records matching your filters.`}
-                  </p>
-                  {stats.total === 0 && (
-                    <button
-                      onClick={triggerPoll}
-                      disabled={isPolling}
-                      className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {isPolling ? 'Polling...' : 'Fetch Data Now'}
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
+              <div className="overflow-y-auto flex-1 max-h-[500px]">
+                {filteredClosures.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">
+                    <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p>No records found</p>
+                  </div>
+                ) : (
                   <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50 sticky top-0">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Route</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">District</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Start Date</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">End Date</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Route</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Dist</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">End Date</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {filteredClosures.map((closure) => (
-                        <tr key={closure.closure_id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                        <tr 
+                          key={closure.closure_id} 
+                          className="hover:bg-gray-50 cursor-pointer transition"
+                          onMouseEnter={() => setSelectedClosure(closure)}
+                          onMouseLeave={() => setSelectedClosure(null)}
+                          onClick={() => router.push(`/closure/${closure.closure_id}`)}
+                        >
+                          <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
                             {closure.route || 'N/A'}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-gray-600">
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-600">
                             {closure.district ?? 'N/A'}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 text-xs rounded-full ${
+                          <td className="px-4 py-2 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 text-xs rounded-full ${
                               closure.closure_type?.includes('Closure') 
                                 ? 'bg-red-100 text-red-800'
                                 : closure.closure_type?.includes('Work')
                                 ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-blue-100 text-blue-800'
                             }`}>
-                              {closure.closure_type || 'Unknown'}
+                              {closure.closure_type?.substring(0, 12) || 'Unknown'}
                             </span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 text-xs rounded-full ${
+                          <td className="px-4 py-2 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 text-xs rounded-full ${
                               closure.status === 'active'
                                 ? 'bg-green-100 text-green-800'
                                 : 'bg-gray-100 text-gray-800'
                             }`}>
-                              {closure.status || 'unknown'}
+                              {closure.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-gray-600">
-                            {closure.start_date ? new Date(closure.start_date).toLocaleDateString() : 'N/A'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-600">
                             {closure.end_date ? new Date(closure.end_date).toLocaleDateString() : 'N/A'}
-                          </td>
-                          <td className="px-6 py-4 text-gray-600 max-w-md">
-                            <div className="truncate" title={closure.description || ''}>
-                              {(closure.description || 'No description')?.substring(0, 100)}
-                              {(closure.description?.length || 0) > 100 ? '...' : ''}
-                            </div>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
-              )}
-            </>
-          ) : (
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Table Only View */}
+        {viewType === 'table' && (
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="px-6 py-4 border-b bg-gray-50">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                <h2 className="text-xl font-semibold text-gray-900">
+                  {activeTab === 'active' && 'Active Lane Closures'}
+                  {activeTab === 'completed' && 'Completed Closures'}
+                  {activeTab === 'all' && 'All Closures'}
+                </h2>
+              </div>
+              <p className="text-sm text-gray-500 mt-1 ml-7">
+                Showing {filteredClosures.length} of {activeTab === 'all' ? stats.total : activeTab === 'active' ? stats.active : stats.completed} records
+              </p>
+            </div>
+            
+            {filteredClosures.length === 0 ? (
+              <div className="p-12 text-center text-gray-500">
+                <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-lg">No records found</p>
+                {stats.total === 0 && (
+                  <button
+                    onClick={triggerPoll}
+                    disabled={isPolling}
+                    className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {isPolling ? 'Polling...' : 'Fetch Data Now'}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Route</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">District</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Start Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">End Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredClosures.map((closure) => (
+                      <tr key={closure.closure_id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                          {closure.route || 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-600">
+                          {closure.district ?? 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            closure.closure_type?.includes('Closure') 
+                              ? 'bg-red-100 text-red-800'
+                              : closure.closure_type?.includes('Work')
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {closure.closure_type || 'Unknown'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            closure.status === 'active'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {closure.status || 'unknown'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-600">
+                          {closure.start_date ? new Date(closure.start_date).toLocaleDateString() : 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {closure.end_date ? new Date(closure.end_date).toLocaleDateString() : 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 text-gray-600 max-w-md">
+                          <div className="truncate" title={closure.description || ''}>
+                            {(closure.description || 'No description')?.substring(0, 100)}
+                            {(closure.description?.length || 0) > 100 ? '...' : ''}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Map Only View */}
+        {viewType === 'map' && (
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="px-6 py-4 border-b bg-gray-50">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                </svg>
+                <h2 className="text-xl font-semibold text-gray-900">Closure Map</h2>
+                <span className="text-sm text-gray-500">
+                  ({closuresWithCoordinates.length} of {filteredClosures.length} closures shown on map)
+                </span>
+              </div>
+            </div>
             <div className="h-[600px] w-full">
               <ClosureMap 
                 closures={filteredClosures} 
                 selectedDistrict={selectedDistrict || undefined}
               />
             </div>
-          )}
-          
-          <div className="px-6 py-4 border-t bg-gray-50 text-sm text-gray-500">
-            <div className="flex justify-between items-center flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>
-                  Showing {viewType === 'table' ? filteredClosures.length : filteredClosures.filter(c => c.latitude && c.longitude).length} {viewType === 'map' ? 'closures on map' : 'records'}
-                  {selectedDistrict && ` from District ${selectedDistrict}`}
-                  {viewType === 'map' && filteredClosures.filter(c => c.latitude && c.longitude).length < filteredClosures.length && (
-                    <span className="text-gray-400 ml-1">
-                      ({filteredClosures.length - filteredClosures.filter(c => c.latitude && c.longitude).length} without coordinates)
-                    </span>
-                  )}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>Last updated: {new Date().toLocaleTimeString()}</span>
-              </div>
+          </div>
+        )}
+
+        {/* Footer Info */}
+        <div className="mt-6 px-6 py-4 bg-white rounded-lg shadow text-sm text-gray-500">
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>
+                {viewType === 'combined' && (
+                  <>Showing {filteredClosures.length} records in table and {closuresWithCoordinates.length} on map</>
+                )}
+                {viewType === 'table' && (
+                  <>Showing {filteredClosures.length} records in table view</>
+                )}
+                {viewType === 'map' && (
+                  <>Showing {closuresWithCoordinates.length} of {filteredClosures.length} closures on map</>
+                )}
+                {selectedDistrict && ` from District ${selectedDistrict}`}
+                {viewType === 'map' && closuresWithCoordinates.length < filteredClosures.length && (
+                  <span className="text-gray-400 ml-1">
+                    ({filteredClosures.length - closuresWithCoordinates.length} without coordinates)
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>Last updated: {new Date().toLocaleTimeString()}</span>
             </div>
           </div>
         </div>
 
-        {/* District Breakdown */}
+        {/* District Breakdown (only shown in table view) */}
         {districtStats.length > 0 && activeTab === 'active' && stats.active > 0 && viewType === 'table' && (
           <div className="mt-8 bg-white rounded-lg shadow overflow-hidden">
             <div className="px-6 py-4 border-b bg-gray-50">

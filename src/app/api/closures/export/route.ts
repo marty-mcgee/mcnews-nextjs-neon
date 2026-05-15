@@ -1,6 +1,9 @@
 // app/api/closures/export/route.ts
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-http';
+import { laneClosures } from '@/lib/auth/schema';
+import { eq, and } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,27 +14,33 @@ export async function GET(request: Request) {
   
   try {
     const connectionString = process.env.DATABASE_URL!;
-    const sql = neon(connectionString);
+    const sqlClient = neon(connectionString);
+    const db = drizzle(sqlClient);
     
-    const data = await sql`
-      SELECT 
-        closure_id,
-        district,
-        route,
-        direction,
-        closure_type,
-        lanes_affected,
-        description,
-        city,
-        county,
-        start_date,
-        end_date,
-        status,
-        created_at
-      FROM lane_closures
-      WHERE status = ${status}
-      ORDER BY end_date ASC
-    `;
+    // Build conditions
+    const conditions = [eq(laneClosures.status, status)];
+    const whereClause = and(...conditions);
+    
+    // Fetch data
+    const data = await db
+      .select({
+        closureId: laneClosures.closureId,
+        district: laneClosures.district,
+        route: laneClosures.route,
+        direction: laneClosures.direction,
+        closureType: laneClosures.closureType,
+        lanesAffected: laneClosures.lanesAffected,
+        description: laneClosures.description,
+        city: laneClosures.city,
+        county: laneClosures.county,
+        startDate: laneClosures.startDate,
+        endDate: laneClosures.endDate,
+        status: laneClosures.status,
+        createdAt: laneClosures.createdAt,
+      })
+      .from(laneClosures)
+      .where(whereClause)
+      .orderBy(laneClosures.endDate);
     
     if (format === 'csv') {
       // Convert to CSV
@@ -43,10 +52,10 @@ export async function GET(request: Request) {
         headers.join(','),
         ...data.map(row => 
           headers.map(header => {
-            const value = row[header];
-            // Escape quotes and wrap in quotes if contains comma
+            const value = row[header as keyof typeof row];
             const stringValue = String(value || '');
-            if (stringValue.includes(',') || stringValue.includes('"')) {
+            // Escape quotes and wrap in quotes if contains comma
+            if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
               return `"${stringValue.replace(/"/g, '""')}"`;
             }
             return stringValue;
@@ -64,6 +73,7 @@ export async function GET(request: Request) {
       });
     }
     
+    // Default: JSON format
     return NextResponse.json({
       success: true,
       data,
@@ -75,7 +85,10 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Export error:', error);
     return NextResponse.json(
-      { error: 'Export failed' },
+      { 
+        error: 'Export failed',
+        details: error instanceof Error ? error.message : String(error)
+      },
       { status: 500 }
     );
   }

@@ -3,17 +3,17 @@ import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
 import { laneClosures, caltransDistricts, apiRequestLogs } from '@/lib/auth/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, and } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
     const connectionString = process.env.DATABASE_URL!;
-    const sql = neon(connectionString);
-    const db = drizzle(sql);
+    const sqlClient = neon(connectionString);
+    const db = drizzle(sqlClient);
     
-    // District summary
+    // 1. Get district summary with active closures
     const districtSummary = await db
       .select({
         districtId: caltransDistricts.districtId,
@@ -33,7 +33,7 @@ export async function GET() {
       )
       .orderBy(sql`activeClosures DESC`);
     
-    // API health
+    // 2. Get API health stats for last 24 hours
     const apiHealth = await db
       .select({
         totalRequests: sql<number>`COUNT(*)`,
@@ -44,7 +44,7 @@ export async function GET() {
       .from(apiRequestLogs)
       .where(sql`${apiRequestLogs.requestTimestamp} > NOW() - INTERVAL '24 hours'`);
     
-    // 7-day trend
+    // 3. Get 7-day trend
     const trends = await db
       .select({
         date: sql<Date>`DATE(${laneClosures.createdAt})`,
@@ -60,16 +60,19 @@ export async function GET() {
       success: true,
       data: {
         districts: districtSummary,
-        api_health: apiHealth[0],
+        api_health: apiHealth[0] || null,
         trends,
-        timestamp: new Date().toISOString()
-      }
+      },
+      timestamp: new Date().toISOString()
     });
     
   } catch (error) {
     console.error('Stats error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch statistics' },
+      { 
+        error: 'Failed to fetch statistics',
+        details: error instanceof Error ? error.message : String(error)
+      },
       { status: 500 }
     );
   }

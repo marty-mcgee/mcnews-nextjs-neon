@@ -10,7 +10,7 @@
   "crons": [
     {
       "path": "/api/cron/poll",
-      "schedule": "*/5 * * * *"
+      "schedule": "*/10 9-17 * * 1-5"
     }
   ]
 }

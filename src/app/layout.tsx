@@ -4,7 +4,7 @@ import "./globals.css";
 import { inter } from "./fonts";
 
 export const metadata: Metadata = {
-  title: "Vercel + Neon",
+  title: "MC.News Traffic Dashboard",
   description: "Use Neon with Vercel",
 };
 

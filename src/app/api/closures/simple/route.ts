@@ -1,39 +1,62 @@
 // app/api/closures/simple/route.ts
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-http';
+import { laneClosures } from '@/lib/auth/schema';
+import { eq, and } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const district = searchParams.get('district');
+  const limit = parseInt(searchParams.get('limit') || '10');
   
   try {
     const connectionString = process.env.DATABASE_URL!;
-    const sql = neon(connectionString);
+    const sqlClient = neon(connectionString);
+    const db = drizzle(sqlClient);
     
-    let query = 'SELECT * FROM lane_closures';
-    const params = [];
+    // Build conditions dynamically
+    const conditions = [];
     
     if (district) {
-      query += ' WHERE district = $1';
-      params.push(parseInt(district));
+      conditions.push(eq(laneClosures.district, parseInt(district)));
     }
     
-    query += ' LIMIT 10';
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
     
-    const result = await sql(query, params);
+    // Execute query
+    let query;
+    if (whereClause) {
+      query = await db
+        .select()
+        .from(laneClosures)
+        .where(whereClause)
+        .limit(limit);
+    } else {
+      query = await db
+        .select()
+        .from(laneClosures)
+        .limit(limit);
+    }
     
     return NextResponse.json({
       success: true,
-      data: result,
-      count: result.length
+      data: query,
+      count: query.length,
+      filters: { district },
+      timestamp: new Date().toISOString()
     });
     
   } catch (error) {
-    return NextResponse.json({
-      success: false,
-      error: String(error)
-    }, { status: 500 });
+    console.error('Simple query error:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to fetch closures',
+        details: error instanceof Error ? error.message : String(error)
+      },
+      { status: 500 }
+    );
   }
 }

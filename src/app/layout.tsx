@@ -1,11 +1,15 @@
+// app/layout.tsx
 import type { Metadata } from "next";
 import { ThemeProvider } from "@/components/themes/provider"
 import "./globals.css";
 import { inter } from "./fonts";
 
+// Import Leaflet CSS
+import 'leaflet/dist/leaflet.css';
+
 export const metadata: Metadata = {
   title: "MC.News Traffic Dashboard",
-  description: "Use Neon with Vercel",
+  description: "Real-time Northern California highway data using Caltrans APIs",
 };
 
 export default function RootLayout({

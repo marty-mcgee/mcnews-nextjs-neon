@@ -1,3 +1,47 @@
+src/
+├── app/                      # Next.js App Router (routes only)
+│   ├── api/
+│   │   ├── closures/         # Lane closure API routes
+│   │   ├── collisions/       # CHP collision API routes
+│   │   ├── historical/
+│   │   │   └── chp/          # CHP poll endpoint
+│   │   └── poll/             # Lane closure poll endpoint
+│   ├── closure/[id]/         # Closure detail page
+│   ├── dashboard/            # Dashboard page
+│   └── layout.tsx
+│
+├── lib/                      # Application libraries and services
+│   ├── db.ts                 # Database connection (already exists)
+│   ├── schema.ts             # Drizzle schema (already exists)
+│   │
+│   ├── services/             # Business logic services
+│   │   ├── index.ts          # Export all services
+│   │   ├── CaltransPoller.ts # Lane closure polling service
+│   │   ├── CHPPoller.ts      # CHP collision polling service
+│   │   └── QueryService.ts   # Shared query utilities
+│   │
+│   ├── utils/                # Helper functions
+│   │   ├── formatters.ts     # Date, number, coordinate formatters
+│   │   └── validators.ts     # Input validation
+│   │
+│   └── types/                # Shared TypeScript types
+│       ├── closures.ts
+│       └── collisions.ts
+│
+├── components/               # React components
+│   ├── ClosureMap.tsx
+│   ├── LoadingSpinner.tsx
+│   └── ...
+│
+├── hooks/                    # Custom React hooks (if needed)
+│   └── useClosures.ts
+│
+└── styles/                   # Global styles
+    └── globals.css
+
+
+
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://neon.com/brand/neon-logo-dark-color.svg?new">
   <source media="(prefers-color-scheme: light)" srcset="https://neon.com/brand/neon-logo-light-color.svg?new">

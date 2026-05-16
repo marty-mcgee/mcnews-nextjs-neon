@@ -219,21 +219,55 @@ export type ApiRequestLog = typeof apiRequestLogs.$inferSelect;
 export type NewApiRequestLog = typeof apiRequestLogs.$inferInsert;
 export type CaltransDistrict = typeof caltransDistricts.$inferSelect;
 
+
+
+// db/schema.ts - Add CCTV table
+export const cctvCameras = pgTable('cctv_cameras', {
+  cameraId: serial('camera_id').primaryKey(),
+  index: varchar('index', { length: 10 }),
+  district: integer('district'),
+  locationName: varchar('location_name', { length: 100 }),
+  nearbyPlace: varchar('nearby_place', { length: 100 }),
+  latitude: numeric('latitude', { precision: 10, scale: 7 }).$type<number>(),
+  longitude: numeric('longitude', { precision: 10, scale: 7 }).$type<number>(),
+  direction: varchar('direction', { length: 10 }),
+  county: varchar('county', { length: 50 }),
+  route: varchar('route', { length: 20 }),
+  inService: boolean('in_service'),
+  currentImageUrl: text('current_image_url'),
+  lastUpdated: timestamp('last_updated'),
+  rawData: jsonb('raw_data'),
+  fetchedAt: timestamp('fetched_at').defaultNow(),
+});
+
+
+
 // db/schema.ts (Add this table)
 export const chpCollisions = pgTable('chp_collisions', {
   id: serial('id').primaryKey(),
   caseId: varchar('case_id', { length: 50 }).unique(),
-  collisionDate: timestamp('collision_date'),
+  collisionDate: timestamp('collision_date', { mode: 'date' }),
   collisionYear: integer('collision_year'),
-  severity: varchar('severity', { length: 50 }), // Fatal, Injury, Property Damage
+  severity: varchar('severity', { length: 50 }),
   county: varchar('county', { length: 100 }),
   city: varchar('city', { length: 100 }),
   location: text('location'),
-  latitude: numeric('latitude').$type<number>(),
-  longitude: numeric('longitude').$type<number>(),
+  latitude: numeric('latitude', { precision: 10, scale: 7 }).$type<number>(),
+  longitude: numeric('longitude', { precision: 10, scale: 7 }).$type<number>(),
   primaryFactor: text('primary_factor'),
   weather: varchar('weather', { length: 50 }),
   lighting: varchar('lighting', { length: 50 }),
+  injuries: integer('injuries').default(0),
+  fatalities: integer('fatalities').default(0),
   rawData: jsonb('raw_data'),
   fetchedAt: timestamp('fetched_at').defaultNow(),
-});
+  lastSeen: timestamp('last_seen').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  countyIdx: index('idx_chp_county').on(table.county),
+  severityIdx: index('idx_chp_severity').on(table.severity),
+  yearIdx: index('idx_chp_year').on(table.collisionYear),
+  dateIdx: index('idx_chp_date').on(table.collisionDate),
+}));
+
+

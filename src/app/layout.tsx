@@ -9,7 +9,7 @@ import 'leaflet/dist/leaflet.css';
 
 export const metadata: Metadata = {
   title: "MC.News Traffic Dashboard",
-  description: "Real-time Northern California highway data using Caltrans APIs",
+  description: "Real-time Northern California highway data using Caltrans + CHP APIs",
 };
 
 export default function RootLayout({

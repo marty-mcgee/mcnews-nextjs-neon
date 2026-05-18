@@ -1,4 +1,4 @@
-// app/api/historical/chp/route.ts
+// src/app/api/historical/chp/route.ts
 import { NextResponse } from 'next/server';
 import { CHPPoller } from '@/lib/services/CHPPoller';
 
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
   } catch (error) {
-    console.error('CHP API Error:', error);
+    console.error('CHP Historical API Error:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: String(error) },
       { status: 500 }
@@ -33,6 +33,7 @@ export async function GET(request: Request) {
 }
 
 async function handlePoll(options: { county?: string; year?: number; limit?: number }) {
+  // Check if already polling
   if (chpPoller.isPollingActive()) {
     return NextResponse.json(
       { error: 'Polling already in progress', status: 'busy' },
@@ -40,23 +41,39 @@ async function handlePoll(options: { county?: string; year?: number; limit?: num
     );
   }
   
-  const result = await chpPoller.pollAll(options);
-  
-  return NextResponse.json({
-    success: result.success,
-    message: result.success ? 'CHP data poll completed' : 'Poll failed',
-    stats: result.stats,
-    timestamp: new Date().toISOString()
-  });
+  try {
+    const pollResult = await chpPoller.pollAll(options);
+    
+    return NextResponse.json({
+      success: pollResult.success,
+      message: pollResult.success ? 'CHP data poll completed' : 'Poll failed',
+      stats: pollResult.stats,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Poll handler error:', error);
+    return NextResponse.json(
+      { error: 'Polling failed', details: String(error) },
+      { status: 500 }
+    );
+  }
 }
 
 async function handleStatus() {
-  const stats = await chpPoller.getStats();
-  
-  return NextResponse.json({
-    success: true,
-    data: stats,
-    isPolling: chpPoller.isPollingActive(),
-    timestamp: new Date().toISOString()
-  });
+  try {
+    const stats = await chpPoller.getStats();
+    
+    return NextResponse.json({
+      success: true,
+      data: stats,
+      isPolling: chpPoller.isPollingActive(),
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Status handler error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get status', details: String(error) },
+      { status: 500 }
+    );
+  }
 }

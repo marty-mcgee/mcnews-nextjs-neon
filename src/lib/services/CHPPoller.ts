@@ -26,7 +26,7 @@ export class CHPPoller {
   private baseUrl = 'https://data.ca.gov/api/3/action/datastore_search';
   private userAgent = 'CHP-Data-Collector/1.0 (contact@example.com)';
   
-  private isPolling = false;
+  private pollingActive = false;
   private lastPollTime: Date | null = null;
   private lastPollStats: any = null;
 
@@ -60,22 +60,22 @@ export class CHPPoller {
       });
       
       const responseTime = Date.now() - startTime;
-      const records = response.data?.result?.records || [];
+      const fetchedRecords = response.data?.result?.records || [];
       
-      await this.logAPIRequest({
+      await this.logApiRequest({
         endpoint: this.baseUrl,
         responseTimeMs: responseTime,
         statusCode: response.status,
         success: response.data?.success === true,
-        recordsFetched: records.length,
+        recordsFetched: fetchedRecords.length,
         responseSizeBytes: JSON.stringify(response.data).length
       });
       
       if (response.data?.success) {
-        console.log(`✓ CHP API: ${records.length} collisions fetched`);
+        console.log(`✓ CHP API: ${fetchedRecords.length} collisions fetched`);
         return {
           success: true,
-          records,
+          records: fetchedRecords,
           total: response.data.result.total,
           offset: response.data.result.offset,
           limit: response.data.result.limit
@@ -86,7 +86,7 @@ export class CHPPoller {
       
     } catch (error) {
       const responseTime = Date.now() - startTime;
-      await this.logAPIRequest({
+      await this.logApiRequest({
         endpoint: this.baseUrl,
         responseTimeMs: responseTime,
         success: false,
@@ -98,7 +98,7 @@ export class CHPPoller {
     }
   }
 
-  private async logAPIRequest(logData: {
+  private async logApiRequest(logData: {
     endpoint: string;
     responseTimeMs: number;
     statusCode?: number;
@@ -166,6 +166,7 @@ export class CHPPoller {
       .limit(1);
     
     if (existing.length > 0) {
+      // @ts-expect-error
       const lastUpdate = new Date(existing[0].lastSeen || existing[0].fetchedAt);
       const shouldUpdate = (Date.now() - lastUpdate.getTime()) > (7 * 24 * 60 * 60 * 1000);
       
@@ -184,40 +185,46 @@ export class CHPPoller {
   }
 
   async pollAll(options?: { county?: string; year?: number; limit?: number }) {
-    if (this.isPolling) {
+    if (this.pollingActive) {
       return { success: false, message: 'Polling already in progress' };
     }
     
-    this.isPolling = true;
+    this.pollingActive = true;
     const startTime = Date.now();
     
     try {
       console.log(`\n🚦 Starting CHP Collision poll at ${new Date().toISOString()}`);
       
       let allRecords: CHPCollisionRecord[] = [];
-      let offset = 0;
-      const limit = options?.limit || 1000;
+      let currentOffset = 0;
+      const maxRecords = options?.limit || 1000;
       let hasMore = true;
       
-      while (hasMore) {
-        const result = await this.fetchCollisions({ ...options, offset, limit: 100 });
-        if (result.success && result.records.length > 0) {
-          allRecords = [...allRecords, ...result.records];
-          offset += result.records.length;
-          hasMore = result.records.length === 100;
+      while (hasMore && allRecords.length < maxRecords) {
+        const fetchResult = await this.fetchCollisions({ 
+          ...options, 
+          offset: currentOffset, 
+          limit: 100 
+        });
+        
+        if (fetchResult.success && fetchResult.records.length > 0) {
+          allRecords = [...allRecords, ...fetchResult.records];
+          currentOffset += fetchResult.records.length;
+          hasMore = fetchResult.records.length === 100;
         } else {
           hasMore = false;
         }
         
+        // Small delay between pagination requests
         await new Promise(resolve => setTimeout(resolve, 500));
       }
       
-      const stats = await this.processCollisions(allRecords);
+      const processStats = await this.processCollisions(allRecords);
       const duration = Date.now() - startTime;
       this.lastPollTime = new Date();
-      this.lastPollStats = { totalFetched: allRecords.length, ...stats, duration };
+      this.lastPollStats = { totalFetched: allRecords.length, ...processStats, duration };
       
-      console.log(`✅ CHP Poll complete: ${allRecords.length} fetched, ${stats.new} new, ${stats.updated} updated`);
+      console.log(`✅ CHP Poll complete: ${allRecords.length} fetched, ${processStats.new} new, ${processStats.updated} updated`);
       
       return {
         success: true,
@@ -229,43 +236,57 @@ export class CHPPoller {
       console.error('CHP Polling error:', error);
       return { success: false, error: String(error) };
     } finally {
-      this.isPolling = false;
+      this.pollingActive = false;
     }
   }
 
   async getStats() {
-    const severityCounts = await db
-      .select({
-        severity: chpCollisions.severity,
-        count: sql<number>`COUNT(*)`,
-      })
-      .from(chpCollisions)
-      .groupBy(chpCollisions.severity);
-    
-    const countyCounts = await db
-      .select({
-        county: chpCollisions.county,
-        count: sql<number>`COUNT(*)`,
-      })
-      .from(chpCollisions)
-      .groupBy(chpCollisions.county)
-      .orderBy(sql`count DESC`)
-      .limit(10);
-    
-    const total = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(chpCollisions);
-    
-    return {
-      total: total[0]?.count || 0,
-      bySeverity: severityCounts,
-      topCounties: countyCounts,
-      lastPoll: this.lastPollTime,
-      lastPollStats: this.lastPollStats
-    };
+    try {
+      const severityCounts = await db
+        .select({
+          severity: chpCollisions.severity,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(chpCollisions)
+        .groupBy(chpCollisions.severity)
+        .catch(() => []);
+      
+      const countyCounts = await db
+        .select({
+          county: chpCollisions.county,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(chpCollisions)
+        .groupBy(chpCollisions.county)
+        .orderBy(sql`count DESC`)
+        .limit(10)
+        .catch(() => []);
+      
+      const totalResult = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(chpCollisions)
+        .catch(() => [{ count: 0 }]);
+      
+      return {
+        total: Number(totalResult[0]?.count || 0),
+        bySeverity: severityCounts,
+        topCounties: countyCounts,
+        lastPoll: this.lastPollTime,
+        lastPollStats: this.lastPollStats
+      };
+    } catch (err) {
+      console.error('Error in getStats:', err);
+      return {
+        total: 0,
+        bySeverity: [],
+        topCounties: [],
+        lastPoll: null,
+        lastPollStats: null
+      };
+    }
   }
 
   isPollingActive(): boolean {
-    return this.isPolling;
+    return this.pollingActive;
   }
 }

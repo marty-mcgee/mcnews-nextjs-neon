@@ -35,7 +35,9 @@
     "axios": "^1.16.0",
     "node-cron": "^4.2.1",
     "leaflet": "^1.9.4",
-    "react-leaflet": "^5.0.0"
+    "react-leaflet": "^5.0.0",
+
+    "cheerio": "^1.2.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -51,6 +53,8 @@
     "typescript": "^5",
 
     "@types/node-cron": "^3.0.11",
-    "@types/leaflet": "^1.9.21"
+    "@types/leaflet": "^1.9.21",
+
+    "@types/cheerio": "^1.0.0"
   }
 }

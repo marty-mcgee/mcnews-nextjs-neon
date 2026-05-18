@@ -21,6 +21,7 @@ interface CHPCollisionRecord {
   number_killed: number;
 }
 
+// Add to CaltransPoller class
 export class CaltransPoller {
   private resourceId = 'd932d5a6-7a65-47c0-9303-3c62514f8ee1';
   private baseUrl = 'https://data.ca.gov/api/3/action/datastore_search';
@@ -29,6 +30,7 @@ export class CaltransPoller {
   private isPolling = false;
   private lastPollTime: Date | null = null;
   private lastPollStats: any = null;
+  private lastSuccessfulPoll: Date | null = null;
 
   async fetchCollisions(options: {
     limit?: number;
@@ -166,6 +168,7 @@ export class CaltransPoller {
       .limit(1);
     
     if (existing.length > 0) {
+      // @ts-expect-error
       const lastUpdate = new Date(existing[0].lastSeen || existing[0].fetchedAt);
       const shouldUpdate = (Date.now() - lastUpdate.getTime()) > (7 * 24 * 60 * 60 * 1000);
       

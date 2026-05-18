@@ -271,3 +271,26 @@ export const chpCollisions = pgTable('chp_collisions', {
 }));
 
 
+// src/lib/schema.ts - Add this table
+export const chpCadIncidents = pgTable('chp_cad_incidents', {
+  id: serial('id').primaryKey(),
+  sourceId: varchar('source_id', { length: 100 }).unique(),
+  incidentType: varchar('incident_type', { length: 100 }),
+  location: text('location'),
+  city: varchar('city', { length: 100 }),
+  county: varchar('county', { length: 100 }),
+  logTime: timestamp('log_time'),
+  details: text('details'),
+  latitude: numeric('latitude', { precision: 10, scale: 7 }).$type<number>(),
+  longitude: numeric('longitude', { precision: 10, scale: 7 }).$type<number>(),
+  status: varchar('status', { length: 20 }).default('active'),
+  fetchedAt: timestamp('fetched_at').defaultNow(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  countyIdx: index('idx_chp_cad_county').on(table.county),
+  typeIdx: index('idx_chp_cad_type').on(table.incidentType),
+  statusIdx: index('idx_chp_cad_status').on(table.status),
+  timeIdx: index('idx_chp_cad_time').on(table.logTime),
+}));
+
+

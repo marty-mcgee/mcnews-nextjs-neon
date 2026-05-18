@@ -3,15 +3,40 @@ import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
 import { chpCollisions } from '@/lib/auth/schema';
-import { sql } from 'drizzle-orm';
+import { sql, desc } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  const connectionString = process.env.DATABASE_URL!;
+  const sqlClient = neon(connectionString);
+  const db = drizzle(sqlClient);
+  
   try {
-    const connectionString = process.env.DATABASE_URL!;
-    const sqlClient = neon(connectionString);
-    const db = drizzle(sqlClient);
+    // Check if table exists first
+    const tableExists = await sqlClient`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'chp_collisions'
+      )
+    `;
+    
+    if (!tableExists[0]?.exists) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          summary: {
+            totalCollisions: 0,
+            totalFatalities: 0,
+            totalInjuries: 0,
+          },
+          bySeverity: [],
+          byCounty: [],
+          availableYears: [],
+        },
+        message: 'CHP collisions table not created yet. Run migrations first.',
+      });
+    }
     
     // Get counts by severity
     const bySeverity = await db
@@ -43,7 +68,7 @@ export async function GET() {
       })
       .from(chpCollisions)
       .groupBy(chpCollisions.collisionYear)
-      .orderBy(sql`year DESC`);
+      .orderBy(desc(chpCollisions.collisionYear));
     
     // Get total counts
     const total = await db
@@ -58,13 +83,21 @@ export async function GET() {
       success: true,
       data: {
         summary: {
-          totalCollisions: total[0]?.count || 0,
-          totalFatalities: total[0]?.totalFatalities || 0,
-          totalInjuries: total[0]?.totalInjuries || 0,
+          totalCollisions: Number(total[0]?.count || 0),
+          totalFatalities: Number(total[0]?.totalFatalities || 0),
+          totalInjuries: Number(total[0]?.totalInjuries || 0),
         },
-        bySeverity,
-        byCounty,
-        availableYears: years.map(y => y.year),
+        bySeverity: bySeverity.map(s => ({
+          ...s,
+          count: Number(s.count),
+          fatalities: Number(s.fatalities),
+          injuries: Number(s.injuries),
+        })),
+        byCounty: byCounty.map(c => ({
+          ...c,
+          count: Number(c.count),
+        })),
+        availableYears: years.map(y => y.year).filter(y => y),
       },
       timestamp: new Date().toISOString()
     });
@@ -72,7 +105,10 @@ export async function GET() {
   } catch (error) {
     console.error('Collisions stats error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch collision statistics' },
+      { 
+        error: 'Failed to fetch collision statistics',
+        details: error instanceof Error ? error.message : String(error)
+      },
       { status: 500 }
     );
   }

@@ -51,8 +51,20 @@ interface Collision {
   injuries: number;
 }
 
+interface CHPIncident {
+  id: number;
+  sourceId: string;
+  incidentType: string;
+  location: string;
+  city: string;
+  county: string;
+  logTime: string;
+  details: string;
+  status: string;
+}
+
 type ViewType = 'table' | 'map' | 'combined';
-type DataTab = 'closures' | 'collisions';
+type DataTab = 'closures' | 'collisions' | 'chp-cad';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -66,18 +78,26 @@ export default function Dashboard() {
   const [collisionsLoading, setCollisionsLoading] = useState(true);
   const [collisionsStats, setCollisionsStats] = useState<any>(null);
   
+  // CHP CAD state
+  const [chpIncidents, setChpIncidents] = useState<CHPIncident[]>([]);
+  const [chpLoading, setChpLoading] = useState(false);
+  const [chpStats, setChpStats] = useState<any>(null);
+  
   // UI state
   const [activeDataTab, setActiveDataTab] = useState<DataTab>('closures');
   const [selectedDistrict, setSelectedDistrict] = useState<string>('');
   const [selectedCounty, setSelectedCounty] = useState<string>('');
   const [selectedSeverity, setSelectedSeverity] = useState<string>('');
   const [selectedYear, setSelectedYear] = useState<string>('');
+  const [selectedChpCounty, setSelectedChpCounty] = useState<string>('');
+  const [selectedIncidentType, setSelectedIncidentType] = useState<string>('');
   const [viewType, setViewType] = useState<ViewType>('combined');
   const [isPolling, setIsPolling] = useState(false);
   
   // Available filters
   const [availableCounties, setAvailableCounties] = useState<string[]>([]);
   const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [availableIncidentTypes, setAvailableIncidentTypes] = useState<string[]>([]);
 
   // Fetch closures data
   useEffect(() => {
@@ -132,18 +152,81 @@ export default function Dashboard() {
     async function fetchStats() {
       try {
         const response = await fetch('/api/collisions/stats');
-        const data = await response.json();
-        if (data.success) {
-          setCollisionsStats(data.data);
-          setAvailableCounties(data.data.byCounty?.map((c: any) => c.county) || []);
-          setAvailableYears(data.data.availableYears || []);
+        const statsData = await response.json();
+        if (statsData.success) {
+          setCollisionsStats(statsData.data);
+          setAvailableCounties(statsData.data.byCounty?.map((c: any) => c.county) || []);
+          setAvailableYears(statsData.data.availableYears || []);
         }
-      } catch (error) {
-        console.error('Failed to fetch collision stats:', error);
+      } catch (err) {
+        console.error('Failed to fetch collision stats:', err);
+        // Don't throw - just log and continue
+        setCollisionsStats({
+          summary: { totalCollisions: 0, totalFatalities: 0, totalInjuries: 0 },
+          bySeverity: [],
+          byCounty: [],
+          availableYears: []
+        });
       }
     }
     fetchStats();
   }, []);
+
+  // Fetch CHP CAD incidents
+  const fetchChpIncidents = async () => {
+    if (activeDataTab !== 'chp-cad') return;
+    
+    setChpLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedChpCounty && selectedChpCounty !== 'all') {
+        params.append('county', selectedChpCounty);
+      }
+      if (selectedIncidentType && selectedIncidentType !== 'all') {
+        params.append('type', selectedIncidentType);
+      }
+      params.append('limit', '100');
+      
+      const response = await fetch(`/api/chp-cad?${params.toString()}`);
+      const data = await response.json();
+      if (data.success) {
+        setChpIncidents(data.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch CHP incidents:', error);
+    } finally {
+      setChpLoading(false);
+    }
+  };
+
+  // Fetch CHP CAD stats
+  useEffect(() => {
+    async function fetchChpStats() {
+      try {
+        const response = await fetch('/api/poll/chp-cad?action=status');
+        const data = await response.json();
+        if (data.success) {
+          setChpStats(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch CHP stats:', error);
+      }
+    }
+    fetchChpStats();
+  }, []);
+
+  // Fetch CHP incidents when tab changes or filters change
+  useEffect(() => {
+    fetchChpIncidents();
+  }, [activeDataTab, selectedChpCounty, selectedIncidentType]);
+
+  // Extract unique incident types from CHP data
+  useEffect(() => {
+    if (chpIncidents.length > 0) {
+      const types = [...new Set(chpIncidents.map(i => i.incidentType).filter(Boolean))];
+      setAvailableIncidentTypes(types);
+    }
+  }, [chpIncidents]);
 
   // Filter closures
   const getFilteredClosures = () => {
@@ -195,30 +278,82 @@ export default function Dashboard() {
       .sort((a, b) => a.district - b.district);
   };
 
-  // Trigger CHP data poll
-  const triggerCHPPoll = async () => {
+  // Trigger CHP CAD poll
+  const triggerCHPCADPoll = async () => {
     setIsPolling(true);
     try {
-      const response = await fetch('/api/historical/chp?action=poll&limit=500');
+      const response = await fetch('/api/poll/chp-cad?action=poll');
       const data = await response.json();
       if (data.success) {
-        alert(`CHP Data poll completed! ${data.stats?.new || 0} new records added.`);
-        const refreshResponse = await fetch('/api/collisions?limit=100');
-        const refreshData = await refreshResponse.json();
-        if (refreshData.success) {
-          setCollisions(refreshData.data);
-        }
+        alert(`CHP CAD poll completed! Found ${data.stats?.total || 0} incidents across ${Object.keys(data.stats?.byCounty || {}).length} counties.`);
+        fetchChpIncidents();
       } else {
-        alert('CHP Poll failed: ' + (data.error || 'Unknown error'));
+        alert('CHP CAD poll failed: ' + (data.error || 'Unknown error'));
       }
     } catch (err) {
-      alert('CHP Poll failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      alert('CHP CAD poll failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setIsPolling(false);
     }
   };
 
-  // Get severity badge color
+  // Trigger CHP historical poll
+  const triggerCHPHistoricalPoll = async () => {
+  setIsPolling(true);
+  try {
+    const response = await fetch('/api/historical/chp?action=poll&limit=100');
+    const result = await response.json();
+    
+    if (result.success) {
+      const newRecordsCount = result.stats?.new || 0;
+      alert(`CHP Historical poll completed! ${newRecordsCount} new records added.`);
+      
+      // Refresh collisions data
+      const params = new URLSearchParams();
+      if (selectedCounty && selectedCounty !== 'all') params.append('county', selectedCounty);
+      if (selectedSeverity && selectedSeverity !== 'all') params.append('severity', selectedSeverity);
+      if (selectedYear && selectedYear !== 'all') params.append('year', selectedYear);
+      params.append('limit', '100');
+      
+      const refreshResponse = await fetch(`/api/collisions?${params.toString()}`);
+      const refreshData = await refreshResponse.json();
+      if (refreshData.success) {
+        setCollisions(refreshData.data);
+      }
+    } else {
+      alert('CHP Historical poll failed: ' + (result.error || 'Unknown error'));
+    }
+  } catch (err) {
+    console.error('CHP Historical poll error:', err);
+    alert('CHP Historical poll failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+  } finally {
+    setIsPolling(false);
+  }
+};
+
+  // Trigger Caltrans poll
+  const triggerCaltransPoll = async () => {
+    setIsPolling(true);
+    try {
+      const response = await fetch('/api/poll?action=poll');
+      const data = await response.json();
+      if (data.success) {
+        alert(`Caltrans poll completed! Found ${data.stats?.totalClosures || 0} closures.`);
+        const refreshResponse = await fetch('/api/closures/raw');
+        const refreshData = await refreshResponse.json();
+        if (refreshData.success) {
+          setClosures(refreshData.data);
+        }
+      } else {
+        alert('Caltrans poll failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      alert('Caltrans poll failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      setIsPolling(false);
+    }
+  };
+
   const getSeverityBadge = (severity: string) => {
     switch (severity) {
       case 'Fatal':
@@ -230,6 +365,19 @@ export default function Dashboard() {
       default:
         return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  const getIncidentTypeBadge = (type: string) => {
+    if (type?.toLowerCase().includes('sig')) {
+      return 'bg-red-100 text-red-800';
+    } else if (type?.toLowerCase().includes('closure')) {
+      return 'bg-orange-100 text-orange-800';
+    } else if (type?.toLowerCase().includes('fire')) {
+      return 'bg-red-100 text-red-800';
+    } else if (type?.toLowerCase().includes('hazard')) {
+      return 'bg-yellow-100 text-yellow-800';
+    }
+    return 'bg-blue-100 text-blue-800';
   };
 
   const closuresStats = getClosuresStats();
@@ -260,16 +408,34 @@ export default function Dashboard() {
                 California Traffic Data Monitor
               </h1>
               <p className="text-gray-500 mt-1">
-                Real-time lane closures + Historical CHP collision data
+                Real-time lane closures + CHP live incidents + Historical collision data
               </p>
             </div>
+            {activeDataTab === 'closures' && (
+              <button
+                onClick={triggerCaltransPoll}
+                disabled={isPolling}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-2"
+              >
+                {isPolling ? 'Polling...' : 'Refresh Caltrans Data'}
+              </button>
+            )}
             {activeDataTab === 'collisions' && (
               <button
-                onClick={triggerCHPPoll}
+                onClick={triggerCHPHistoricalPoll}
                 disabled={isPolling}
                 className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50 flex items-center gap-2"
               >
-                {isPolling ? 'Polling...' : 'Refresh CHP Data'}
+                {isPolling ? 'Polling...' : 'Refresh CHP Historical'}
+              </button>
+            )}
+            {activeDataTab === 'chp-cad' && (
+              <button
+                onClick={triggerCHPCADPoll}
+                disabled={isPolling}
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition disabled:opacity-50 flex items-center gap-2"
+              >
+                {isPolling ? 'Polling...' : 'Refresh Live CHP'}
               </button>
             )}
           </div>
@@ -295,6 +461,22 @@ export default function Dashboard() {
                 Live Lane Closures
                 <span className="ml-2 px-2 py-0.5 text-xs bg-blue-100 text-blue-600 rounded-full">
                   {closuresStats.active}
+                </span>
+              </button>
+              <button
+                onClick={() => setActiveDataTab('chp-cad')}
+                className={`px-6 py-4 text-sm font-medium flex items-center gap-2 ${
+                  activeDataTab === 'chp-cad'
+                    ? 'border-b-2 border-orange-500 text-orange-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                CHP Live Incidents
+                <span className="ml-2 px-2 py-0.5 text-xs bg-orange-100 text-orange-600 rounded-full">
+                  {chpIncidents.length}
                 </span>
               </button>
               <button
@@ -394,7 +576,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* View Toggle - Table, Map, Combined */}
+            {/* View Toggle */}
             <div className="bg-white rounded-lg shadow mb-6">
               <div className="px-6 py-3 border-b bg-gray-50 flex justify-between items-center flex-wrap gap-3">
                 <div className="flex items-center gap-2">
@@ -483,10 +665,9 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* ==================== COMBINED VIEW ==================== */}
+            {/* Combined View */}
             {viewType === 'combined' && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Map Section */}
                 <div className="bg-white rounded-lg shadow overflow-hidden">
                   <div className="px-4 py-3 border-b bg-gray-50">
                     <div className="flex items-center gap-2">
@@ -507,7 +688,6 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* Table Section */}
                 <div className="bg-white rounded-lg shadow overflow-hidden flex flex-col">
                   <div className="px-4 py-3 border-b bg-gray-50">
                     <div className="flex items-center gap-2">
@@ -535,7 +715,6 @@ export default function Dashboard() {
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Route</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Dist</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">End Date</th>
                           </tr>
                         </thead>
@@ -553,19 +732,8 @@ export default function Dashboard() {
                                 {closure.district ?? 'N/A'}
                               </td>
                               <td className="px-4 py-2 whitespace-nowrap">
-                                <span className={`px-2 py-0.5 text-xs rounded-full ${
-                                  closure.closure_type?.includes('Closure') 
-                                    ? 'bg-red-100 text-red-800'
-                                    : closure.closure_type?.includes('Work')
-                                    ? 'bg-yellow-100 text-yellow-800'
-                                    : 'bg-blue-100 text-blue-800'
-                                }`}>
+                                <span className="px-2 py-0.5 text-xs rounded-full bg-red-100 text-red-800">
                                   {closure.closure_type?.substring(0, 12) || 'Unknown'}
-                                </span>
-                              </td>
-                              <td className="px-4 py-2 whitespace-nowrap">
-                                <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-800">
-                                  {closure.status}
                                 </span>
                               </td>
                               <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-600">
@@ -581,7 +749,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* ==================== TABLE ONLY VIEW ==================== */}
+            {/* Table Only View */}
             {viewType === 'table' && (
               <div className="bg-white rounded-lg shadow overflow-hidden">
                 <div className="overflow-x-auto">
@@ -617,13 +785,7 @@ export default function Dashboard() {
                               {closure.district ?? 'N/A'}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`px-2 py-1 text-xs rounded-full ${
-                                closure.closure_type?.includes('Closure') 
-                                  ? 'bg-red-100 text-red-800'
-                                  : closure.closure_type?.includes('Work')
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-blue-100 text-blue-800'
-                              }`}>
+                              <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
                                 {closure.closure_type || 'Unknown'}
                               </span>
                             </td>
@@ -649,7 +811,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* ==================== MAP ONLY VIEW ==================== */}
+            {/* Map Only View */}
             {viewType === 'map' && (
               <div className="bg-white rounded-lg shadow overflow-hidden">
                 <div className="h-[600px] w-full">
@@ -663,7 +825,215 @@ export default function Dashboard() {
           </>
         )}
 
-        {/* ==================== COLLISIONS TAB ==================== */}
+        {/* ==================== CHP LIVE INCIDENTS TAB ==================== */}
+        {activeDataTab === 'chp-cad' && (
+          <>
+            {/* CHP CAD Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+              <div className="bg-white rounded-lg shadow p-6 border-l-4 border-orange-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-sm">Live Incidents</p>
+                    <p className="text-3xl font-bold text-gray-900">{chpIncidents.length}</p>
+                  </div>
+                  <div className="bg-orange-100 rounded-full p-3">
+                    <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6 border-l-4 border-red-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-sm">SIG Alerts</p>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {chpIncidents.filter(i => i.incidentType?.toLowerCase().includes('sig')).length}
+                    </p>
+                  </div>
+                  <div className="bg-red-100 rounded-full p-3">
+                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor"viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6 border-l-4 border-yellow-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-sm">Counties</p>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {new Set(chpIncidents.map(i => i.county)).size}
+                    </p>
+                  </div>
+                  <div className="bg-yellow-100 rounded-full p-3">
+                    <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-sm">Last Poll</p>
+                    <p className="text-lg font-bold text-gray-900">
+                      {chpStats?.lastPollTime 
+                        ? new Date(chpStats.lastPollTime).toLocaleTimeString() 
+                        : 'Never'}
+                    </p>
+                  </div>
+                  <div className="bg-blue-100 rounded-full p-3">
+                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* CHP CAD Filters */}
+            <div className="bg-white rounded-lg shadow mb-6 p-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">County</label>
+                  <select
+                    value={selectedChpCounty}
+                    onChange={(e) => setSelectedChpCounty(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="all">All Counties</option>
+                    {Array.from(new Set(chpIncidents.map(i => i.county))).map(county => (
+                      <option key={county} value={county}>{county}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Incident Type</label>
+                  <select
+                    value={selectedIncidentType}
+                    onChange={(e) => setSelectedIncidentType(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="all">All Types</option>
+                    {availableIncidentTypes.map(type => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-end">
+                  {(selectedChpCounty || selectedIncidentType) && (
+                    <button
+                      onClick={() => {
+                        setSelectedChpCounty('all');
+                        setSelectedIncidentType('all');
+                      }}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                    >
+                      Clear Filters
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* CHP CAD Table */}
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="px-6 py-4 border-b bg-gray-50">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <h2 className="text-xl font-semibold text-gray-900">Live CHP Incidents</h2>
+                </div>
+                <p className="text-sm text-gray-500 mt-1 ml-7">
+                  Real-time incidents from CHP CAD system
+                </p>
+              </div>
+
+              {chpLoading ? (
+                <div className="p-12 text-center">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
+                  <p className="mt-2 text-gray-500">Loading incidents...</p>
+                </div>
+              ) : chpIncidents.length === 0 ? (
+                <div className="p-12 text-center text-gray-500">
+                  <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-lg">No incidents found</p>
+                  <p className="text-sm mt-2">
+                    Click "Refresh Live CHP" to fetch current incidents from CHP CAD.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">County</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">City</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {chpIncidents.map((incident) => (
+                        <tr key={incident.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {incident.logTime ? new Date(incident.logTime).toLocaleTimeString() : 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {incident.county || 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 text-xs rounded-full ${getIncidentTypeBadge(incident.incidentType)}`}>
+                              {incident.incidentType || 'Unknown'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600 max-w-xs">
+                            <div className="truncate" title={incident.location || ''}>
+                              {incident.location || 'N/A'}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {incident.city || 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600 max-w-md">
+                            <div className="truncate" title={incident.details || ''}>
+                              {incident.details?.substring(0, 100) || 'N/A'}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="px-6 py-4 border-t bg-gray-50 text-sm text-gray-500">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Data source: CHP CAD Public Feed (unofficial)</span>
+                  </div>
+                  <div>Showing {chpIncidents.length} incidents</div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ==================== CHP COLLISIONS TAB ==================== */}
         {activeDataTab === 'collisions' && (
           <>
             {/* Collisions Stats Cards */}
@@ -740,7 +1110,7 @@ export default function Dashboard() {
                   <select
                     value={selectedCounty}
                     onChange={(e) => setSelectedCounty(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                   >
                     <option value="all">All Counties</option>
                     {availableCounties.map((county) => (
@@ -754,7 +1124,7 @@ export default function Dashboard() {
                   <select
                     value={selectedSeverity}
                     onChange={(e) => setSelectedSeverity(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                   >
                     <option value="all">All Severities</option>
                     <option value="Fatal">Fatal</option>
@@ -768,7 +1138,7 @@ export default function Dashboard() {
                   <select
                     value={selectedYear}
                     onChange={(e) => setSelectedYear(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                   >
                     <option value="all">All Years</option>
                     {availableYears.map((year) => (
@@ -810,7 +1180,7 @@ export default function Dashboard() {
 
               {collisionsLoading ? (
                 <div className="p-12 text-center">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
                   <p className="mt-2 text-gray-500">Loading collisions data...</p>
                 </div>
               ) : collisions.length === 0 ? (
@@ -821,7 +1191,7 @@ export default function Dashboard() {
                   <p className="text-lg">No collision records found</p>
                   <p className="text-sm mt-2">
                     {collisionsStats?.summary?.totalCollisions === 0 
-                      ? 'No CHP data available. Use the "Refresh CHP Data" button to fetch from data.ca.gov.'
+                      ? 'No CHP data available. Click "Refresh CHP Historical" to fetch from data.ca.gov.'
                       : 'No records match your filters.'}
                   </p>
                 </div>

@@ -294,3 +294,37 @@ export const chpCadIncidents = pgTable('chp_cad_incidents', {
 }));
 
 
+
+// 511.org
+
+// src/lib/schema.ts
+export const bayAreaTrafficEvents = pgTable('bay_area_traffic_events', {
+  id: serial('id').primaryKey(),
+  sourceId: varchar('source_id', { length: 100 }).unique(),
+  jurisdiction: varchar('jurisdiction', { length: 50 }).default('SF Bay Area'),
+  eventType: varchar('event_type', { length: 100 }),
+  eventSubType: varchar('event_sub_type', { length: 100 }),
+  severity: varchar('severity', { length: 50 }),
+  status: varchar('status', { length: 20 }).default('active'),
+  title: text('title'),
+  description: text('description'),
+  roadwayName: varchar('roadway_name', { length: 100 }),
+  directionOfTravel: varchar('direction_of_travel', { length: 50 }),
+  lanesAffected: text('lanes_affected'),
+  isFullClosure: boolean('is_full_closure'),
+  latitude: numeric('latitude', { precision: 10, scale: 7 }).$type<number>(),
+  longitude: numeric('longitude', { precision: 10, scale: 7 }).$type<number>(),
+  startTime: timestamp('start_time'),
+  endTime: timestamp('end_time'),
+  lastUpdated: timestamp('last_updated'),
+  rawData: jsonb('raw_data'),
+  fetchedAt: timestamp('fetched_at').defaultNow(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  typeIdx: index('idx_bay_area_type').on(table.eventType),
+  statusIdx: index('idx_bay_area_status').on(table.status),
+  routeIdx: index('idx_bay_area_route').on(table.roadwayName),
+  timeIdx: index('idx_bay_area_time').on(table.startTime),
+}));
+
+

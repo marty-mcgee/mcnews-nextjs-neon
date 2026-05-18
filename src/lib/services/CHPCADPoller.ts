@@ -1,68 +1,11 @@
 // src/lib/services/CHPCADPoller.ts
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { db } from '@/lib/db/client';
+import { chpCadIncidents, apiRequestLogs } from '@/lib/auth/schema';
+import { eq, sql } from 'drizzle-orm';
 
-const COUNTY_CODES: Record<string, string> = {
-    'Alameda': 'ALAM',
-    'Amador': 'AMA',
-    'Butte': 'BUTT',
-    'Calaveras': 'CALV',
-    'Colusa': 'COLU',
-    'Contra Costa': 'CC',
-    'Del Norte': 'DN',
-    'El Dorado': 'ED',
-    'Fresno': 'FRE',
-    'Glenn': 'GLE',
-    'Humboldt': 'HUM',
-    'Imperial': 'IMP',
-    'Inyo': 'INY',
-    'Kern': 'KERN',
-    'Kings': 'KING',
-    'Lake': 'LAKE',
-    'Lassen': 'LASS',
-    'Los Angeles': 'LA',
-    'Madera': 'MAD',
-    'Marin': 'MRN',
-    'Mariposa': 'MP',
-    'Mendocino': 'MEND',
-    'Merced': 'MERC',
-    'Modoc': 'MOD',
-    'Mono': 'MONO',
-    'Monterey': 'MTY',
-    'Napa': 'NAPA',
-    'Nevada': 'NEV',
-    'Orange': 'ORA',
-    'Placer': 'PLAC',
-    'Plumas': 'PLU',
-    'Riverside': 'RIV',
-    'Sacramento': 'SAC',
-    'San Benito': 'SBT',
-    'San Bernardino': 'SBD',
-    'San Diego': 'SD',
-    'San Francisco': 'SF',
-    'San Joaquin': 'SJ',
-    'San Luis Obispo': 'SLO',
-    'San Mateo': 'SM',
-    'Santa Barbara': 'SB',
-    'Santa Clara': 'SCL',
-    'Santa Cruz': 'SCZ',
-    'Shasta': 'SHA',
-    'Sierra': 'SIE',
-    'Siskiyou': 'SIS',
-    'Solano': 'SOL',
-    'Sonoma': 'SON',
-    'Stanislaus': 'STA',
-    'Sutter': 'SUT',
-    'Tehama': 'TEH',
-    'Trinity': 'TRI',
-    'Tulare': 'TUL',
-    'Tuolumne': 'TUO',
-    'Ventura': 'VEN',
-    'Yolo': 'YOLO',
-    'Yuba': 'YUBA'
-};
-
-export interface CHPIncident {
+interface CHPIncident {
   sourceId: string;
   incidentType: string;
   location: string;
@@ -70,63 +13,76 @@ export interface CHPIncident {
   county: string;
   logTime: Date;
   details: string;
-  latitude: number | null;
-  longitude: number | null;
   status: string;
   fetchedAt: Date;
 }
 
+// CHP Communication Centers (Counties) with their codes
+const COUNTY_CODES: Record<string, string> = {
+  'Alameda': 'ALAM',
+  'Contra Costa': 'CC',
+  'Fresno': 'FRE',
+  'Los Angeles': 'LA',
+  'Orange': 'ORA',
+  'Riverside': 'RIV',
+  'Sacramento': 'SAC',
+  'San Bernardino': 'SBD',
+  'San Diego': 'SD',
+  'San Francisco': 'SF',
+  'San Joaquin': 'SJ',
+  'San Mateo': 'SM',
+  'Santa Clara': 'SCL',
+  'Ventura': 'VEN',
+  // Add more counties as needed
+};
+
 export class CHPCADPoller {
   private baseUrl = 'https://cad.chp.ca.gov/Traffic.aspx';
-  private userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  private userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+  
+  private pollingActive = false;
+  private lastPollTime: Date | null = null;
+  private lastPollStats: any = null;
 
   async fetchIncidentsForCounty(countyName: string, countyCode: string): Promise<CHPIncident[]> {
     try {
       console.log(`Fetching CHP incidents for ${countyName}...`);
       
-      // First, get the initial page to capture VIEWSTATE values
+      // Step 1: Get initial page to capture ASP.NET viewstate
       const initialResponse = await axios.get(this.baseUrl, {
-        headers: {
-          'User-Agent': this.userAgent,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Connection': 'keep-alive',
-        },
-        timeout: 15000,
+        headers: { 'User-Agent': this.userAgent },
+        timeout: 15000
       });
-
-      // Extract VIEWSTATE from the initial page
+      
       const $ = cheerio.load(initialResponse.data);
+      
+      // Extract ASP.NET hidden fields
       const viewState = $('#__VIEWSTATE').val() || '';
       const viewStateGenerator = $('#__VIEWSTATEGENERATOR').val() || '';
-
-      // Now make the POST request with the VIEWSTATE
-      const postResponse = await axios.post(
-        this.baseUrl,
-      // @ts-expect-error
-        new URLSearchParams({
-          '__VIEWSTATE': viewState,
-          '__VIEWSTATEGENERATOR': viewStateGenerator,
-          'ddlComCenter': countyCode,
-          'btnSubmit': 'Submit'
-        }),
-        {
-          headers: {
-            'User-Agent': this.userAgent,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Referer': this.baseUrl,
-            'Origin': 'https://cad.chp.ca.gov',
-            'Connection': 'keep-alive',
-          },
-          timeout: 15000,
-        }
-      );
-
+      const eventValidation = $('#__EVENTVALIDATION').val() || '';
+      
+      // Step 2: Submit the form with the county selection
+      const postData = new URLSearchParams({
+        '__VIEWSTATE': viewState,
+        '__VIEWSTATEGENERATOR': viewStateGenerator,
+        '__EVENTVALIDATION': eventValidation,
+        'ddlComCenter': countyCode,
+        'btnSubmit': 'Submit'
+      });
+      
+      const postResponse = await axios.post(this.baseUrl, postData, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': this.userAgent
+        },
+        timeout: 15000
+      });
+      
+      // Step 3: Parse the HTML table
       const incidents = this.parseIncidentsFromHtml(postResponse.data, countyName);
       console.log(`  ✓ Found ${incidents.length} incidents for ${countyName}`);
       return incidents;
+      
     } catch (error) {
       console.error(`Failed to fetch CHP data for ${countyName}:`, error);
       return [];
@@ -136,37 +92,29 @@ export class CHPCADPoller {
   private parseIncidentsFromHtml(html: string, countyName: string): CHPIncident[] {
     const $ = cheerio.load(html);
     const incidents: CHPIncident[] = [];
-
-    // Try multiple possible table selectors
-    const table = $('#GridView1, #grdIncidents, .incident-table, table:contains("Type")');
+    
+    // Look for the incident table (common ASP.NET GridView ID)
+    const table = $('#GridView1, table:contains("Type")');
     
     if (table.length === 0) {
-      console.warn(`Could not find incident table for ${countyName}`);
       return [];
     }
-
-    // Find the tbody or direct rows
-    const rows = table.find('tbody tr').length ? table.find('tbody tr') : table.find('tr');
     
-    rows.each((rowIndex, row) => {
-      // Skip header row (look for th or first row with Type/Location headers)
+    // Parse each row (skip header row)
+    table.find('tr').each((index, row) => {
+      if (index === 0) return; // Skip header row
+      
       const cells = $(row).find('td');
       if (cells.length < 4) return;
       
-      // Skip if this looks like a header row
-      const firstCellText = $(cells[0]).text().trim().toLowerCase();
-      if (firstCellText === 'type' || firstCellText === 'incident type') return;
-      
       const incident: CHPIncident = {
-        sourceId: `${countyName}_${Date.now()}_${rowIndex}`,
+        sourceId: `${countyName}_${Date.now()}_${index}`,
         incidentType: $(cells[0]).text().trim(),
         location: $(cells[1]).text().trim(),
         city: $(cells[2]).text().trim(),
         county: countyName,
         logTime: new Date(),
         details: $(cells[3]).text().trim(),
-        latitude: null,
-        longitude: null,
         status: 'active',
         fetchedAt: new Date(),
       };
@@ -175,37 +123,137 @@ export class CHPCADPoller {
         incidents.push(incident);
       }
     });
-
+    
     return incidents;
   }
 
-  async pollAllCounties(): Promise<{ total: number; byCounty: Record<string, number> }> {
-    console.log(`\n🚦 Starting CHP CAD poll at ${new Date().toISOString()}`);
+  private async logApiRequest(logData: {
+    endpoint: string;
+    responseTimeMs: number;
+    statusCode?: number;
+    success: boolean;
+    recordsFetched?: number;
+    errorMessage?: string;
+  }) {
+    try {
+      await db.insert(apiRequestLogs).values({
+        endpoint: logData.endpoint,
+        responseTimeMs: logData.responseTimeMs,
+        statusCode: logData.statusCode,
+        success: logData.success,
+        recordsFetched: logData.recordsFetched || 0,
+        errorMessage: logData.errorMessage,
+      });
+    } catch (error) {
+      console.error('Failed to log API request:', error);
+    }
+  }
+
+  private async upsertIncident(incident: CHPIncident): Promise<'new' | 'updated' | 'skipped'> {
+    const existing = await db
+      .select()
+      .from(chpCadIncidents)
+      .where(eq(chpCadIncidents.sourceId, incident.sourceId))
+      .limit(1);
     
-    let allIncidents: CHPIncident[] = [];
-    const byCounty: Record<string, number> = {};
-    
-    // Poll only a subset of counties to avoid rate limiting
-    // const priorityCounties = ['Los Angeles', 'Orange', 'San Diego', 'Sacramento', 'San Francisco', 'Alameda'];
-    const priorityCounties = ['Mendocino', 'San Francisco', 'Sacramento', 'Alameda'];
-    
-    for (const countyName of priorityCounties) {
-      const countyCode = COUNTY_CODES[countyName];
-      if (!countyCode) continue;
-      
-      const incidents = await this.fetchIncidentsForCounty(countyName, countyCode);
-      allIncidents = [...allIncidents, ...incidents];
-      byCounty[countyName] = incidents.length;
-      
-      // Be respectful: add delay between requests
-      await new Promise(resolve => setTimeout(resolve, 2000));
+    if (existing.length > 0) {
+      // Update if status changed
+      if (existing[0].status !== incident.status) {
+        await db
+          .update(chpCadIncidents)
+          .set({ ...incident, updatedAt: new Date() })
+          .where(eq(chpCadIncidents.sourceId, incident.sourceId));
+        return 'updated';
+      }
+      return 'skipped';
+    } else {
+      await db.insert(chpCadIncidents).values(incident);
+      return 'new';
+    }
+  }
+
+  async pollAll(): Promise<{ success: boolean; stats?: any; error?: string }> {
+    if (this.pollingActive) {
+      return { success: false, error: 'Polling already in progress' };
     }
     
-    console.log(`✅ CHP CAD poll complete: ${allIncidents.length} total incidents`);
+    this.pollingActive = true;
+    const startTime = Date.now();
+    
+    try {
+      console.log(`\n🚦 Starting CHP CAD poll at ${new Date().toISOString()}`);
+      
+      let allIncidents: CHPIncident[] = [];
+      const byCounty: Record<string, number> = {};
+      
+      // Poll a subset of major counties to avoid rate limiting
+      const priorityCounties = ['Los Angeles', 'Orange', 'San Diego', 'Sacramento', 'San Francisco', 'Alameda'];
+      
+      for (const countyName of priorityCounties) {
+        const countyCode = COUNTY_CODES[countyName];
+        if (!countyCode) continue;
+        
+        const incidents = await this.fetchIncidentsForCounty(countyName, countyCode);
+        allIncidents = [...allIncidents, ...incidents];
+        byCounty[countyName] = incidents.length;
+        
+        // Be respectful: add delay between requests
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
+      let newCount = 0;
+      let updatedCount = 0;
+      let skippedCount = 0;
+      
+      for (const incident of allIncidents) {
+        const result = await this.upsertIncident(incident);
+        if (result === 'new') newCount++;
+        else if (result === 'updated') updatedCount++;
+        else skippedCount++;
+      }
+      
+      const duration = Date.now() - startTime;
+      this.lastPollTime = new Date();
+      this.lastPollStats = { totalFetched: allIncidents.length, newCount, updatedCount, skippedCount, byCounty, duration };
+      
+      console.log(`✅ CHP CAD Poll complete: ${allIncidents.length} incidents, ${newCount} new, ${updatedCount} updated`);
+      
+      return {
+        success: true,
+        stats: this.lastPollStats,
+        timestamp: new Date().toISOString()
+      };
+      
+    } catch (error) {
+      console.error('CHP CAD Polling error:', error);
+      return { success: false, error: String(error) };
+    } finally {
+      this.pollingActive = false;
+    }
+  }
+
+  async getStats() {
+    const typeCounts = await db
+      .select({
+        type: chpCadIncidents.incidentType,
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(chpCadIncidents)
+      .groupBy(chpCadIncidents.incidentType);
+    
+    const total = await db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(chpCadIncidents);
     
     return {
-      total: allIncidents.length,
-      byCounty,
+      total: total[0]?.count || 0,
+      byType: typeCounts,
+      lastPoll: this.lastPollTime,
+      lastPollStats: this.lastPollStats
     };
+  }
+
+  isPollingActive(): boolean {
+    return this.pollingActive;
   }
 }

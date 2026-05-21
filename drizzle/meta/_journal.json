@@ -5,22 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1778696187711,
-      "tag": "0000_foamy_tenebrous",
+      "when": 1779295961292,
+      "tag": "0000_flimsy_machine_man",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1779111855746,
-      "tag": "0001_supreme_jubilee",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1779120539301,
-      "tag": "0002_closed_ares",
+      "when": 1779297123579,
+      "tag": "0001_flat_magneto",
       "breakpoints": true
     }
   ]

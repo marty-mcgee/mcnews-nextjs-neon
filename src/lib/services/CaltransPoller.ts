@@ -4,27 +4,6 @@ import { db } from '@/lib/db/client';
 import { laneClosures, apiRequestLogs } from '@/lib/auth/schema';
 import { eq, sql } from 'drizzle-orm';
 
-interface CaltransClosure {
-  lcsClosureID?: string;
-  route?: string;
-  direction?: string;
-  closureType?: string;
-  type?: string;
-  lanesAffected?: string;
-  lanesClosed?: string;
-  startDate?: string;
-  endDate?: string;
-  startTime?: string;
-  endTime?: string;
-  description?: string;
-  comments?: string;
-  latitude?: string | number;
-  longitude?: string | number;
-  county?: string;
-  city?: string;
-  status?: string;
-}
-
 export class CaltransPoller {
   private districts: number[];
   private baseUrl = 'https://cwwp2.dot.ca.gov/data';
@@ -39,7 +18,7 @@ export class CaltransPoller {
     this.districts = districtsEnv.split(',').map(d => parseInt(d.trim()));
   }
 
-  async fetchDistrictData(district: number): Promise<any | null> {
+  async fetchDistrictData(district: number) {
     const startTime = Date.now();
     const url = `${this.baseUrl}/d${district}/lcs/lcsStatusD${district.toString().padStart(2, '0')}.json`;
     
@@ -65,11 +44,9 @@ export class CaltransPoller {
       });
       
       if (response.status === 404 || !response.data?.lcsClosures) {
-        console.log(`No lane closure data for District ${district}`);
         return null;
       }
       
-      console.log(`✓ District ${district}: ${response.data.lcsClosures.length} closures`);
       return response.data;
       
     } catch (error) {
@@ -112,20 +89,16 @@ export class CaltransPoller {
     }
   }
 
-  private determineStatus(closure: CaltransClosure): 'active' | 'completed' | 'cancelled' {
+  private determineStatus(closure: any): 'active' | 'completed' | 'cancelled' {
     if (closure.status === 'cancelled') return 'cancelled';
-    
     if (closure.endDate) {
       const endDateTime = new Date(`${closure.endDate}T${closure.endTime || '23:59'}`);
-      if (endDateTime < new Date()) {
-        return 'completed';
-      }
+      if (endDateTime < new Date()) return 'completed';
     }
-    
     return 'active';
   }
 
-  private async upsertClosure(district: number, closure: CaltransClosure): Promise<'new' | 'updated' | 'skipped'> {
+  private async upsertClosure(district: number, closure: any): Promise<'new' | 'updated' | 'skipped'> {
     const sourceId = closure.lcsClosureID || 
       `${district}_${closure.route}_${closure.startDate}_${closure.startTime}`;
     
@@ -133,7 +106,6 @@ export class CaltransPoller {
     const endDate = closure.endDate || '2099-12-31';
     const startTime = closure.startTime || '00:00';
     const endTime = closure.endTime || '23:59';
-    
     const status = this.determineStatus(closure);
     
     const closureData = {
@@ -151,8 +123,8 @@ export class CaltransPoller {
       endTimestamp: new Date(`${endDate}T${endTime}`),
       description: closure.description || closure.comments || 
         `${closure.closureType || 'Closure'} on ${closure.route || 'unknown route'}`,
-      latitude: closure.latitude ? parseFloat(closure.latitude as string) : null,
-      longitude: closure.longitude ? parseFloat(closure.longitude as string) : null,
+      latitude: closure.latitude ? parseFloat(closure.latitude) : null,
+      longitude: closure.longitude ? parseFloat(closure.longitude) : null,
       county: closure.county || null,
       city: closure.city || null,
       status,
@@ -169,15 +141,10 @@ export class CaltransPoller {
     if (existing.length > 0) {
       const shouldUpdate = existing[0].status !== status || 
                           (Date.now() - new Date(existing[0].lastSeen).getTime()) > 3600000;
-      
       if (shouldUpdate) {
         await db
           .update(laneClosures)
-          .set({
-            ...closureData,
-            timesSeen: sql`${laneClosures.timesSeen} + 1`,
-            lastModified: new Date(),
-          })
+          .set({ ...closureData, timesSeen: sql`${laneClosures.timesSeen} + 1`, lastModified: new Date() })
           .where(eq(laneClosures.sourceId, sourceId));
         return 'updated';
       }
@@ -202,69 +169,31 @@ export class CaltransPoller {
       let totalClosures = 0;
       let totalNew = 0;
       let totalUpdated = 0;
-      const results: Record<number, { processed: number; new: number; updated: number }> = {};
       
       for (const district of this.districts) {
         await new Promise(resolve => setTimeout(resolve, 500));
-        
         const data = await this.fetchDistrictData(district);
+        
         if (data?.lcsClosures) {
-          let newCount = 0;
-          let updatedCount = 0;
-          let processed = 0;
-          
           for (const closure of data.lcsClosures) {
             const result = await this.upsertClosure(district, closure);
-            processed++;
-            if (result === 'new') newCount++;
-            if (result === 'updated') updatedCount++;
+            totalClosures++;
+            if (result === 'new') totalNew++;
+            if (result === 'updated') totalUpdated++;
           }
-          
-          totalClosures += processed;
-          totalNew += newCount;
-          totalUpdated += updatedCount;
-          results[district] = { processed, new: newCount, updated: updatedCount };
-        } else {
-          results[district] = { processed: 0, new: 0, updated: 0 };
         }
       }
       
       const duration = Date.now() - startTime;
       this.lastPollTime = new Date();
-      this.lastPollStats = { totalClosures, totalNew, totalUpdated, results, duration };
+      this.lastPollStats = { totalClosures, totalNew, totalUpdated, duration };
       
       console.log(`✅ Caltrans Poll complete: ${totalClosures} closures processed`);
       
-      return {
-        success: true,
-        stats: this.lastPollStats,
-        timestamp: new Date().toISOString()
-      };
-      
-    } catch (error) {
-      console.error('Caltrans Polling error:', error);
-      return { success: false, error: String(error) };
+      return { success: true, stats: this.lastPollStats };
     } finally {
       this.pollingActive = false;
     }
-  }
-
-  async getStats() {
-    const activeCount = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(laneClosures)
-      .where(eq(laneClosures.status, 'active'));
-    
-    const total = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(laneClosures);
-    
-    return {
-      total: total[0]?.count || 0,
-      active: activeCount[0]?.count || 0,
-      lastPoll: this.lastPollTime,
-      lastPollStats: this.lastPollStats
-    };
   }
 
   isPollingActive(): boolean {

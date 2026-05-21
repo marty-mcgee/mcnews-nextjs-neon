@@ -1,9 +1,9 @@
-// src/app/api/collisions/stats/route.ts
+// src/app/api/chp-cad-centers/route.ts
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
-import { chpCollisions } from '@/lib/auth/schema';
-import { sql } from 'drizzle-orm';
+import { chpCadCenters } from '@/lib/auth/schema';
+import { and, eq } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,24 +13,27 @@ export async function GET() {
     const sqlClient = neon(connectionString);
     const db = drizzle(sqlClient);
     
-    const total = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(chpCollisions);
+    // ✅ Using correct Drizzle pattern
+    const conditions = [eq(chpCadCenters.isActive, true)];
+    const whereClause = and(...conditions);
+    
+    const centers = await db
+      .select()
+      .from(chpCadCenters)
+      .where(whereClause)
+      .orderBy(chpCadCenters.centerName);
     
     return NextResponse.json({
       success: true,
-      data: {
-        summary: {
-          totalCollisions: Number(total[0]?.count || 0),
-        }
-      },
+      data: centers,
+      count: centers.length,
       timestamp: new Date().toISOString()
     });
     
   } catch (error) {
-    console.error('Collisions stats error:', error);
+    console.error('Error fetching centers:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch statistics', details: String(error) },
+      { error: String(error) },
       { status: 500 }
     );
   }

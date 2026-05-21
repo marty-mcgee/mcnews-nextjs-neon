@@ -5,34 +5,6 @@ import { db } from '@/lib/db/client';
 import { chpCadIncidents, chpCadCenters, apiRequestLogs } from '@/lib/auth/schema';
 import { eq, and, sql } from 'drizzle-orm';
 
-// Hardcoded centers data for lookup/insert
-const CENTERS_DATA = [
-  { code: 'UKI', name: 'Ukiah', county: 'Mendocino', region: 'Northern' },
-  { code: 'EUREKA', name: 'Eureka', county: 'Humboldt', region: 'Northern' },
-  { code: 'LA', name: 'Los Angeles', county: 'Los Angeles', region: 'Southern' },
-  { code: 'SAC', name: 'Sacramento', county: 'Sacramento', region: 'Northern' },
-  { code: 'CC', name: 'Contra Costa', county: 'Contra Costa', region: 'Bay Area' },
-  { code: 'GG', name: 'Golden Gate', county: 'San Francisco', region: 'Bay Area' },
-  { code: 'SCL', name: 'Santa Clara', county: 'Santa Clara', region: 'Bay Area' },
-  { code: 'SM', name: 'San Mateo', county: 'San Mateo', region: 'Bay Area' },
-  { code: 'SOL', name: 'Solano', county: 'Solano', region: 'Bay Area' },
-  { code: 'ORA', name: 'Orange', county: 'Orange', region: 'Southern' },
-  { code: 'RIV', name: 'Riverside', county: 'Riverside', region: 'Southern' },
-  { code: 'SBD', name: 'San Bernardino', county: 'San Bernardino', region: 'Southern' },
-  { code: 'SD', name: 'San Diego', county: 'San Diego', region: 'Southern' },
-  { code: 'VEN', name: 'Ventura', county: 'Ventura', region: 'Southern' },
-  { code: 'FRE', name: 'Fresno', county: 'Fresno', region: 'Central' },
-  { code: 'KERN', name: 'Kern', county: 'Kern', region: 'Central' },
-  { code: 'SJ', name: 'San Joaquin', county: 'San Joaquin', region: 'Central' },
-  { code: 'SLO', name: 'San Luis Obispo', county: 'San Luis Obispo', region: 'Central' },
-  { code: 'STA', name: 'Stanislaus', county: 'Stanislaus', region: 'Central' },
-  { code: 'BUTT', name: 'Butte', county: 'Butte', region: 'Northern' },
-  { code: 'MEND', name: 'Mendocino', county: 'Mendocino', region: 'Northern' },
-  { code: 'RED', name: 'Redding', county: 'Shasta', region: 'Northern' },
-  { code: 'SON', name: 'Sonoma', county: 'Sonoma', region: 'Northern' },
-  { code: 'YOLO', name: 'Yolo', county: 'Yolo', region: 'Northern' },
-];
-
 export class CHPCADPoller {
   private baseUrl = 'https://cad.chp.ca.gov/Traffic.aspx';
   private userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
@@ -41,49 +13,22 @@ export class CHPCADPoller {
   private lastPollTime: Date | null = null;
   private lastPollStats: any = null;
 
-  // Ensure all centers exist in the database
-  private async ensureCenters() {
-    for (const center of CENTERS_DATA) {
-      const conditions = [eq(chpCadCenters.centerCode, center.code)];
-      const whereClause = and(...conditions);
-      
-      const existing = await db
-        .select()
-        .from(chpCadCenters)
-        .where(whereClause)
-        .limit(1);
-      
-      if (existing.length === 0) {
-        await db.insert(chpCadCenters).values({
-          centerCode: center.code,
-          centerName: center.name,
-          county: center.county,
-          region: center.region,
-          isActive: true,
-        });
-        console.log(`  Created center: ${center.name}`);
-      }
-    }
-  }
-
-  // Get center ID by code
-  private async getCenterId(code: string): Promise<number | null> {
-    const conditions = [eq(chpCadCenters.centerCode, code)];
+  async getCenters() {
+    // ✅ Using correct Drizzle pattern - build whereClause
+    const conditions = [eq(chpCadCenters.isActive, true)];
     const whereClause = and(...conditions);
     
-    const result = await db
-      .select({ id: chpCadCenters.id })
+    return await db
+      .select()
       .from(chpCadCenters)
-      .where(whereClause)
-      .limit(1);
-    
-    return result[0]?.id || null;
+      .where(whereClause);
   }
 
-  async fetchIncidentsForCenter(center: { code: string; name: string; county: string }) {
+  async fetchIncidentsForCenter(center: { centerCode: string; centerName: string; county: string; id?: number }) {
     try {
-      console.log(`  Fetching CHP incidents for ${center.name} (${center.code})...`);
+      console.log(`  Fetching CHP incidents for ${center.centerName} (${center.centerCode})...`);
       
+      // Get initial page for viewstate
       const initialResponse = await axios.get(this.baseUrl, {
         headers: { 'User-Agent': this.userAgent },
         timeout: 15000
@@ -99,7 +44,7 @@ export class CHPCADPoller {
       formData.append('__VIEWSTATE', viewState);
       formData.append('__VIEWSTATEGENERATOR', viewStateGenerator);
       if (eventValidation) formData.append('__EVENTVALIDATION', eventValidation);
-      formData.append('ddlComCenter', center.code);
+      formData.append('ddlComCenter', center.centerCode);
       formData.append('btnSubmit', 'Submit');
       
       const postResponse = await axios.post(this.baseUrl, formData, {
@@ -115,15 +60,16 @@ export class CHPCADPoller {
       return incidents;
       
     } catch (error) {
-      console.error(`  Failed to fetch data for ${center.name}:`, error);
+      console.error(`  Failed to fetch data for ${center.centerName}:`, error);
       return [];
     }
   }
 
-  private parseIncidentsFromHtml(html: string, center: { code: string; name: string; county: string }) {
+  private parseIncidentsFromHtml(html: string, center: { centerName: string; county: string; id?: number }) {
     const $ = cheerio.load(html);
     const incidents: any[] = [];
     
+    // Find the incident table by looking for header text
     let incidentTable: cheerio.Cheerio | undefined;
     const tables = $('table');
     
@@ -162,12 +108,11 @@ export class CHPCADPoller {
       if (area && area !== '--') fullLocation += ` - ${area}`;
       
       const logTime = this.parseIncidentTime(incidentTime, now);
-      const sourceId = `${center.code}_${incidentNumber || now.getTime()}_${index}`;
+      const sourceId = `${center.centerCode}_${incidentNumber || now.getTime()}_${index}`;
       
       incidents.push({
         sourceId,
-        centerId: null, // Will be set after we get the ID
-        centerCode: center.code,
+        centerId: center.id,
         incidentType: incidentType || 'Unknown',
         location: fullLocation || 'Unknown',
         city: area || '',
@@ -201,6 +146,59 @@ export class CHPCADPoller {
     return text.replace(/\s+/g, ' ').trim();
   }
 
+  private async logApiRequest(logData: {
+    endpoint: string;
+    responseTimeMs: number;
+    statusCode?: number;
+    success: boolean;
+    recordsFetched?: number;
+    errorMessage?: string;
+  }) {
+    try {
+      await db.insert(apiRequestLogs).values({
+        endpoint: logData.endpoint,
+        responseTimeMs: logData.responseTimeMs,
+        statusCode: logData.statusCode,
+        success: logData.success,
+        recordsFetched: logData.recordsFetched || 0,
+        errorMessage: logData.errorMessage,
+      });
+    } catch (error) {
+      console.error('Failed to log API request:', error);
+    }
+  }
+
+  private async upsertIncident(incident: any): Promise<'new' | 'updated' | 'skipped'> {
+    try {
+      // ✅ Using proper Drizzle pattern
+      const whereClause = eq(chpCadIncidents.sourceId, incident.sourceId);
+      
+      const existing = await db
+        .select()
+        .from(chpCadIncidents)
+        .where(whereClause)
+        .limit(1);
+      
+      if (existing.length > 0) {
+        if (existing[0].status !== incident.status) {
+          const updateWhere = eq(chpCadIncidents.sourceId, incident.sourceId);
+          await db
+            .update(chpCadIncidents)
+            .set({ ...incident, updatedAt: new Date() })
+            .where(updateWhere);
+          return 'updated';
+        }
+        return 'skipped';
+      } else {
+        await db.insert(chpCadIncidents).values(incident);
+        return 'new';
+      }
+    } catch (error) {
+      console.error(`Error upserting incident ${incident.sourceId}:`, error);
+      return 'skipped';
+    }
+  }
+
   async pollAll(): Promise<{ success: boolean; stats?: any; error?: string }> {
     if (this.pollingActive) {
       return { success: false, error: 'Polling already in progress' };
@@ -212,45 +210,30 @@ export class CHPCADPoller {
     try {
       console.log(`\n🚦 Starting CHP CAD poll at ${new Date().toISOString()}`);
       
-      // First, ensure all centers exist in the database
-      await this.ensureCenters();
-      
-      console.log(`  Polling ${CENTERS_DATA.length} communication centers`);
+      const centers = await this.getCenters();
+      console.log(`  Polling ${centers.length} communications centers`);
       
       let allIncidents: any[] = [];
       const byCenter: Record<string, number> = {};
       
-      for (const center of CENTERS_DATA) {
-        // Get the center ID for this center
-        const centerId = await this.getCenterId(center.code);
-        
+      for (const center of centers) {
         const incidents = await this.fetchIncidentsForCenter(center);
+        allIncidents = [...allIncidents, ...incidents];
+        byCenter[center.centerName] = incidents.length;
         
-        // Set the centerId for each incident
-        const incidentsWithCenterId = incidents.map(inc => ({
-          ...inc,
-          centerId: centerId,
-        }));
-        
-        allIncidents = [...allIncidents, ...incidentsWithCenterId];
-        byCenter[center.name] = incidents.length;
-        
+        // Be respectful: add delay between requests
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
       
       let newCount = 0;
+      let updatedCount = 0;
+      let skippedCount = 0;
       
       for (const incident of allIncidents) {
-        const existing = await db
-          .select()
-          .from(chpCadIncidents)
-          .where(eq(chpCadIncidents.sourceId, incident.sourceId))
-          .limit(1);
-        
-        if (existing.length === 0) {
-          await db.insert(chpCadIncidents).values(incident);
-          newCount++;
-        }
+        const result = await this.upsertIncident(incident);
+        if (result === 'new') newCount++;
+        else if (result === 'updated') updatedCount++;
+        else skippedCount++;
       }
       
       const duration = Date.now() - startTime;
@@ -258,6 +241,8 @@ export class CHPCADPoller {
       this.lastPollStats = { 
         totalFetched: allIncidents.length, 
         newCount, 
+        updatedCount, 
+        skippedCount, 
         byCenter, 
         duration 
       };
@@ -279,25 +264,31 @@ export class CHPCADPoller {
   }
 
   async getStats() {
-    const total = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(chpCadIncidents);
-    
-    const byCenterStats = await db
-      .select({
-        centerName: chpCadCenters.centerName,
-        count: sql<number>`COUNT(*)`,
-      })
-      .from(chpCadIncidents)
-      .leftJoin(chpCadCenters, eq(chpCadIncidents.centerId, chpCadCenters.id))
-      .groupBy(chpCadCenters.centerName);
-    
-    return {
-      total: Number(total[0]?.count || 0),
-      byCenter: byCenterStats,
-      lastPoll: this.lastPollTime,
-      lastPollStats: this.lastPollStats
-    };
+    try {
+      // ✅ Using proper Drizzle pattern for stats
+      const total = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(chpCadIncidents);
+      
+      const byCenterStats = await db
+        .select({
+          centerName: chpCadCenters.centerName,
+          count: sql<number>`COUNT(${chpCadIncidents.id})`,
+        })
+        .from(chpCadIncidents)
+        .leftJoin(chpCadCenters, eq(chpCadIncidents.centerId, chpCadCenters.id))
+        .groupBy(chpCadCenters.centerName);
+      
+      return {
+        total: Number(total[0]?.count || 0),
+        byCenter: byCenterStats,
+        lastPoll: this.lastPollTime,
+        lastPollStats: this.lastPollStats
+      };
+    } catch (error) {
+      console.error('Error getting CHP CAD stats:', error);
+      return { total: 0, byCenter: [], lastPoll: this.lastPollTime, lastPollStats: this.lastPollStats };
+    }
   }
 
   isPollingActive(): boolean {

@@ -125,3 +125,23 @@
     @apply bg-background text-foreground;
   }
 }
+
+
+
+
+
+/* // src/app/globals.css */
+/* Leaflet CSS */
+@import 'leaflet/dist/leaflet.css';
+
+/* Fix for Leaflet marker icons */
+.leaflet-default-icon-path {
+  background-image: url(https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png);
+}
+
+.leaflet-container {
+  z-index: 1;
+}
+
+
+

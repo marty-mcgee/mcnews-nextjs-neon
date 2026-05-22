@@ -2,7 +2,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { RefreshCw, AlertTriangle, MapPin, Clock, TrendingUp, Radio, Construction, Car } from 'lucide-react';
+
+// Dynamically import the map component to avoid SSR issues
+const LeafletMap = dynamic(() => import('@/components/map/LeafletMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[400px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+    </div>
+  ),
+});
 
 interface BayAreaEvent {
   id: number;
@@ -13,6 +24,9 @@ interface BayAreaEvent {
   description: string;
   severity?: string;
   startTime?: string;
+  latitude?: number;
+  longitude?: number;
+  county?: string;
 }
 
 export default function BayArea511Content() {
@@ -23,6 +37,12 @@ export default function BayArea511Content() {
   const [isPolling, setIsPolling] = useState(false);
   const [selectedType, setSelectedType] = useState<string>('');
   const [availableTypes, setAvailableTypes] = useState<string[]>([]);
+  const [showMap, setShowMap] = useState(true);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -84,6 +104,8 @@ export default function BayArea511Content() {
     return 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300';
   };
 
+  const mendocinoEvents = events.filter(e => e.county?.toLowerCase() === 'mendocino');
+  const mendocinoWithCoordinates = mendocinoEvents.filter(e => e.latitude && e.longitude);
   const activeCount = events.filter(e => e.eventType?.toLowerCase().includes('incident')).length;
   const constructionCount = events.filter(e => e.eventType?.toLowerCase().includes('construction')).length;
   const roadworkCount = events.filter(e => e.eventType?.toLowerCase().includes('roadwork')).length;
@@ -108,6 +130,18 @@ export default function BayArea511Content() {
     );
   }
 
+  // Prepare map events (only Mendocino County with coordinates)
+  const mapEvents = mendocinoWithCoordinates.map(event => ({
+    id: event.id,
+    latitude: event.latitude!,
+    longitude: event.longitude!,
+    roadwayName: event.roadwayName,
+    eventType: event.eventType,
+    description: event.description,
+    directionOfTravel: event.directionOfTravel,
+    lanesAffected: event.lanesAffected,
+  }));
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -116,14 +150,23 @@ export default function BayArea511Content() {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Bay Area Traffic Events</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Official real-time data from 511.org</p>
         </div>
-        <button
-          onClick={pollData}
-          disabled={isPolling}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-50 shadow-sm"
-        >
-          <RefreshCw className={`w-4 h-4 ${isPolling ? 'animate-spin' : ''}`} />
-          {isPolling ? 'Fetching...' : 'Refresh Data'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowMap(!showMap)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-700 transition-all shadow-sm"
+          >
+            <MapPin className="w-4 h-4" />
+            {showMap ? 'Hide Map' : 'Show Map'}
+          </button>
+          <button
+            onClick={pollData}
+            disabled={isPolling}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-50 shadow-sm"
+          >
+            <RefreshCw className={`w-4 h-4 ${isPolling ? 'animate-spin' : ''}`} />
+            {isPolling ? 'Fetching...' : 'Refresh Data'}
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -166,6 +209,19 @@ export default function BayArea511Content() {
         </div>
       </div>
 
+      {/* Mendocino County Summary */}
+      <div className="mb-6 p-4 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <MapPin className="w-5 h-5 text-purple-600" />
+            <span className="font-semibold text-purple-900 dark:text-purple-300">Mendocino County</span>
+          </div>
+          <div className="text-sm text-purple-700 dark:text-purple-400">
+            {mendocinoWithCoordinates.length} events with locations • {mendocinoEvents.length - mendocinoWithCoordinates.length} without coordinates
+          </div>
+        </div>
+      </div>
+
       {/* Type Filter */}
       {availableTypes.length > 0 && (
         <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
@@ -193,6 +249,28 @@ export default function BayArea511Content() {
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Map - Only render on client side */}
+      {showMap && isClient && (
+        <div className="mb-6">
+          {mapEvents.length > 0 ? (
+            <LeafletMap events={mapEvents} center={[39.3, -123.5]} zoom={9} />
+          ) : (
+            <div className="w-full h-[400px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex flex-col items-center justify-center">
+              <MapPin className="w-12 h-12 text-gray-400 mb-2" />
+              <p className="text-gray-500">No events with location data available for Mendocino County</p>
+              <p className="text-sm text-gray-400 mt-1">Events will appear here when coordinates are available</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Loading placeholder for map when not client */}
+      {showMap && !isClient && (
+        <div className="mb-6 w-full h-[400px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
         </div>
       )}
 
@@ -225,10 +303,13 @@ export default function BayArea511Content() {
                       <h3 className="font-semibold text-gray-900 dark:text-white">{event.roadwayName || 'Unknown Roadway'}</h3>
                       <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">{event.description?.substring(0, 120)}</p>
                     </div>
-                    <div className="flex-shrink-0">
+                    <div className="flex flex-col items-end gap-1">
                       <span className={`px-2 py-1 text-xs rounded-full ${getEventTypeBadge(event.eventType)}`}>
                         {event.eventType || 'Event'}
                       </span>
+                      {event.county && (
+                        <span className="text-xs text-gray-400">{event.county}</span>
+                      )}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-4 mt-3 text-xs text-gray-500 dark:text-gray-400">
@@ -248,6 +329,12 @@ export default function BayArea511Content() {
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         Starts: {new Date(event.startTime).toLocaleDateString()}
+                      </span>
+                    )}
+                    {event.latitude && event.longitude && (
+                      <span className="flex items-center gap-1 text-emerald-600">
+                        <MapPin className="w-3 h-3" />
+                        Located on map
                       </span>
                     )}
                   </div>

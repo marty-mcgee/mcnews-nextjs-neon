@@ -1,4 +1,4 @@
-// src/components/Map/LeafletMap.tsx
+// src/components/map/leafletMap.tsx
 'use client';
 
 import { useEffect, useRef } from 'react';

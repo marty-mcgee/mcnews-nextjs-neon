@@ -29,7 +29,7 @@ export default function CHPHistoricalContent() {
       setError(null);
       
       // Fetch collisions
-      const response = await fetch('/api/collisions?limit=100');
+      const response = await fetch('/api/chp-historical/collisions?limit=100');
       const data = await response.json();
       
       if (data.success) {
@@ -39,7 +39,7 @@ export default function CHPHistoricalContent() {
       }
       
       // Fetch stats
-      const statsResponse = await fetch('/api/collisions/stats');
+      const statsResponse = await fetch('/api/chp-historical/collisions/stats');
       const statsData = await statsResponse.json();
       
       if (statsData.success) {
@@ -57,7 +57,7 @@ export default function CHPHistoricalContent() {
   const pollData = async () => {
     setIsPolling(true);
     try {
-      const response = await fetch('/api/historical/chp?action=poll&limit=50');
+      const response = await fetch('/api/chp-historical/poll?action=poll&limit=50');
       const data = await response.json();
       if (data.success) {
         alert(`CHP Historical poll completed! ${data.stats?.newCount || 0} new records added.`);

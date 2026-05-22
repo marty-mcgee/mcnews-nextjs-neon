@@ -7,48 +7,38 @@ import { eq, sql } from 'drizzle-orm';
 export class CHPPoller {
   private resourceId = 'b8ce0ca4-b4e9-490d-b4d1-1f4ec48cbefb';
   private baseUrl = 'https://data.ca.gov/api/3/action/datastore_search';
+  
+  // Add these missing properties
+  private pollingActive = false;
+  private lastPollTime: Date | null = null;
+  private lastPollStats: any = null;
 
-  async fetchCollisionsDirect(limit: number = 100, offset: number = 0) {
+  async pollAll(options?: { limit?: number }) {
+    if (this.pollingActive) {
+      return { success: false, error: 'Polling already in progress' };
+    }
+    
+    this.pollingActive = true;
+    const startTime = Date.now();
+    const limit = options?.limit || 100;
+    
     try {
       const response = await axios.get(this.baseUrl, {
         params: {
           resource_id: this.resourceId,
           limit: limit,
-          offset: offset
-        }
+          offset: 0
+        },
+        timeout: 30000
       });
       
-      return {
-        success: response.data?.success || false,
-        records: response.data?.result?.records || [],
-        total: response.data?.result?.total || 0
-      };
-    } catch (error) {
-      console.error('Fetch error:', error);
-      return { success: false, records: [], total: 0 };
-    }
-  }
-
-  async pollAll(options?: { limit?: number }): Promise<{ success: boolean; stats?: any }> {
-    const limit = options?.limit || 100;
-    
-    try {
-      console.log(`Fetching ${limit} CHP records...`);
-      
-      const result = await this.fetchCollisionsDirect(limit, 0);
-      
-      if (!result.success || result.records.length === 0) {
-        return { success: true, stats: { totalFetched: 0, newCount: 0 } };
-      }
-      
+      const records = response.data?.result?.records || [];
       let newCount = 0;
       
-      for (const record of result.records) {
+      for (const record of records) {
         const caseId = record['Report Number'];
-        
         if (!caseId) continue;
         
-        // Check if exists
         const existing = await db
           .select()
           .from(chpCollisions)
@@ -72,14 +62,41 @@ export class CHPPoller {
         }
       }
       
-      return { 
-        success: true, 
-        stats: { totalFetched: result.records.length, newCount } 
-      };
+      this.lastPollTime = new Date();
+      this.lastPollStats = { totalFetched: records.length, newCount, duration: Date.now() - startTime };
+      this.pollingActive = false;
+      
+      return { success: true, stats: this.lastPollStats };
       
     } catch (error) {
-      console.error('CHP Polling error:', error);
-      return { success: false, stats: { error: String(error) } };
+      this.pollingActive = false;
+      console.error('CHP Historical Poller error:', error);
+      return { success: false, error: String(error) };
     }
+  }
+
+  async getStats() {
+    const total = await db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(chpCollisions);
+    
+    const bySeverity = await db
+      .select({
+        severity: chpCollisions.severity,
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(chpCollisions)
+      .groupBy(chpCollisions.severity);
+    
+    return {
+      total: Number(total[0]?.count || 0),
+      bySeverity: bySeverity,
+      lastPoll: this.lastPollTime,
+      lastPollStats: this.lastPollStats
+    };
+  }
+
+  isPollingActive(): boolean {
+    return this.pollingActive;
   }
 }

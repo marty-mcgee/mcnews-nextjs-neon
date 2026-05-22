@@ -23,10 +23,10 @@ export default function DebugIndex() {
     {
       path: '/debug/closure-test',
       title: 'Closure ID Test',
-      description: 'Test the /api/closures/[id] endpoint with specific IDs'
+      description: 'Test the /api/caltrans/closures/[id] endpoint with specific IDs'
     },
     {
-      path: '/api/closures/raw',
+      path: '/api/caltrans/closures/raw',
       title: 'Raw Closures API',
       description: 'View raw closure data directly from database',
       external: true

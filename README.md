@@ -246,19 +246,19 @@ Commit and push your code changes to your GitHub repository to automatically tri
 ## [MM] Notes
 
 # 1. Summary (working)
-curl "http://localhost:3000/api/closures/summary"
+curl "http://localhost:3000/api/caltrans/closures/summary"
 
 # 2. Closures with pagination
-curl "http://localhost:3000/api/closures?district=7&limit=10&offset=0"
+curl "http://localhost:3000/api/caltrans/closures?district=7&limit=10&offset=0"
 
 # 3. Dashboard stats
 curl "http://localhost:3000/api/dashboard/stats"
 
 # 4. Search
-curl "http://localhost:3000/api/closures/search?q=101"
+curl "http://localhost:3000/api/caltrans/closures/search?q=101"
 
 # 5. Export as JSON
-curl "http://localhost:3000/api/closures/export?format=json&status=active"
+curl "http://localhost:3000/api/caltrans/closures/export?format=json&status=active"
 
 # 6. Export as CSV
-curl "http://localhost:3000/api/closures/export?format=csv&status=active"
+curl "http://localhost:3000/api/caltrans/closures/export?format=csv&status=active"

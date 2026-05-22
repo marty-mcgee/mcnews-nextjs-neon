@@ -20,7 +20,7 @@ export default function BayArea511() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/bay-area-traffic?limit=100');
+      const response = await fetch('/api/bay-area-511?limit=100');
       const data = await response.json();
       if (data.success && Array.isArray(data.data)) {
         setEvents(data.data);
@@ -35,7 +35,7 @@ export default function BayArea511() {
   const pollData = async () => {
     setIsPolling(true);
     try {
-      const response = await fetch('/api/poll/bay-area-511?action=poll');
+      const response = await fetch('/api/bay-area-511/poll?action=poll');
       const data = await response.json();
       if (data.success) {
         alert(`Bay Area 511 poll completed! Found ${data.stats?.totalFetched || 0} events.`);

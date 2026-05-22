@@ -60,7 +60,7 @@ export default function CHPLiveContent() {
   const pollData = async () => {
     setIsPolling(true);
     try {
-      const response = await fetch('/api/poll/chp-cad?action=poll');
+      const response = await fetch('/api/chp-cad/poll?action=poll');
       const data = await response.json();
       if (data.success) {
         // Your API returns stats with totalFetched and newCount

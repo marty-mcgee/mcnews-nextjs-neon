@@ -12,11 +12,11 @@ export default function DebugPage() {
     async function runDebug() {
       try {
         // Test 1: Check if API is reachable
-        const summaryRes = await fetch('/api/closures/summary');
+        const summaryRes = await fetch('/api/caltrans/closures/summary');
         const summaryData = await summaryRes.json();
         
         // Test 2: Get sample closures
-        const closuresRes = await fetch('/api/closures?limit=5');
+        const closuresRes = await fetch('/api/caltrans/closures?limit=5');
         const closuresData = await closuresRes.json();
         
         // Test 3: Get dashboard stats

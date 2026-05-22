@@ -20,7 +20,7 @@ export default function DebugClosureTest() {
     setResult(null);
     
     try {
-      const response = await fetch(`/api/closures/${testId}`);
+      const response = await fetch(`/api/caltrans/closures/${testId}`);
       const data = await response.json();
       
       setResult({
@@ -42,7 +42,7 @@ export default function DebugClosureTest() {
   const fetchAvailableIds = async () => {
     setShowIds(true);
     try {
-      const response = await fetch('/api/closures/raw');
+      const response = await fetch('/api/caltrans/closures/raw');
       const data = await response.json();
       if (data.success) {
         setAvailableIds(data.data);
@@ -60,7 +60,7 @@ export default function DebugClosureTest() {
             ← Back to Debug
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">Closure ID Debug Tool</h1>
-          <p className="text-gray-500 mt-1">Test the /api/closures/[id] endpoint with Drizzle ORM</p>
+          <p className="text-gray-500 mt-1">Test the /api/caltrans/closures/[id] endpoint with Drizzle ORM</p>
         </div>
 
         {/* Test Form */}

@@ -47,7 +47,7 @@ export default function CaltransContent() {
     async function fetchClosures() {
       try {
         setLoading(true);
-        const response = await fetch('/api/closures/raw');
+        const response = await fetch('/api/caltrans/closures/raw');
         const data = await response.json();
         if (data.success && Array.isArray(data.data)) {
           setClosures(data.data);
@@ -64,11 +64,11 @@ export default function CaltransContent() {
   const pollCaltrans = async () => {
     setIsPolling(true);
     try {
-      const response = await fetch('/api/poll?action=poll');
+      const response = await fetch('/api/caltrans/poll?action=poll');
       const data = await response.json();
       if (data.success) {
         alert(`Caltrans poll completed! Found ${data.stats?.totalClosures || 0} closures.`);
-        const refresh = await fetch('/api/closures/raw');
+        const refresh = await fetch('/api/caltrans/closures/raw');
         const refreshData = await refresh.json();
         if (refreshData.success) setClosures(refreshData.data);
       } else {

@@ -3,7 +3,7 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { db } from '@/lib/db/client';
 import { chpCadIncidents, chpCadCenters } from '@/lib/auth/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 
 const CENTERS_LIST = [
   { code: 'UKCC', name: 'Ukiah', county: 'Mendocino' },
@@ -20,9 +20,16 @@ const CENTERS_LIST = [
 export class CHPCADPoller {
   private baseUrl = 'https://cad.chp.ca.gov/Traffic.aspx';
   private userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+  
+  private pollingActive = false;
+  private lastPollTime: Date | null = null;
+  private lastPollStats: any = null;
 
   async pollAll() {
     console.log(`\n🚦 Starting CHP CAD poll at ${new Date().toISOString()}`);
+    
+    this.pollingActive = true;
+    const startTime = Date.now();
     
     let allIncidents: any[] = [];
     let totalNew = 0;
@@ -50,9 +57,21 @@ export class CHPCADPoller {
       }
     }
     
+    const duration = Date.now() - startTime;
+    this.lastPollTime = new Date();
+    this.lastPollStats = { totalFetched: allIncidents.length, newCount: totalNew, duration };
+    
     console.log(`✅ CHP CAD Poll complete: ${allIncidents.length} total, ${totalNew} new`);
     
-    return { success: true, stats: { totalFetched: allIncidents.length, newCount: totalNew } };
+    this.pollingActive = false;
+    
+    return { 
+      success: true, 
+      stats: { 
+        totalFetched: allIncidents.length, 
+        newCount: totalNew 
+      } 
+    };
   }
 
   private async fetchIncidentsForCenter(center: { code: string; name: string; county: string }) {
@@ -111,7 +130,6 @@ export class CHPCADPoller {
     const $ = cheerio.load(html);
     const incidents: any[] = [];
     
-    // Find the table by its ID
     const incidentTable = $('#gvIncidents');
     
     if (!incidentTable || incidentTable.length === 0) {
@@ -119,7 +137,6 @@ export class CHPCADPoller {
       return [];
     }
     
-    // Get all data rows
     const rows = incidentTable.find('tr.gvRow, tr.gvAltRow');
     const now = new Date();
     
@@ -136,7 +153,6 @@ export class CHPCADPoller {
       
       if (!incidentType && !location) return;
       
-      // Build full location string
       let fullLocation = location;
       if (locationDesc && locationDesc !== '&nbsp;' && locationDesc !== '') {
         fullLocation += ` (${locationDesc})`;
@@ -145,7 +161,6 @@ export class CHPCADPoller {
         fullLocation += ` - ${area}`;
       }
       
-      // Parse time
       let logTime = new Date(now);
       if (incidentTime) {
         try {
@@ -154,9 +169,7 @@ export class CHPCADPoller {
           if (modifier === 'PM' && hours !== 12) hours += 12;
           if (modifier === 'AM' && hours === 12) hours = 0;
           logTime.setHours(hours, minutes || 0, 0, 0);
-        } catch (e) {
-          // Keep default time
-        }
+        } catch (e) {}
       }
       
       incidents.push({
@@ -175,5 +188,55 @@ export class CHPCADPoller {
     
     console.log(`    Parsed ${incidents.length} incidents for ${center.name}`);
     return incidents;
+  }
+
+  async getStats() {
+    try {
+      const totalResult = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(chpCadIncidents);
+      
+      const byCenterResult = await db
+        .select({
+          centerName: chpCadCenters.centerName,
+          centerCode: chpCadCenters.centerCode,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(chpCadIncidents)
+        .leftJoin(chpCadCenters, eq(chpCadIncidents.centerId, chpCadCenters.id))
+        .groupBy(chpCadCenters.centerName, chpCadCenters.centerCode)
+        .orderBy(sql`count DESC`);
+      
+      const byTypeResult = await db
+        .select({
+          incidentType: chpCadIncidents.incidentType,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(chpCadIncidents)
+        .groupBy(chpCadIncidents.incidentType)
+        .orderBy(sql`count DESC`)
+        .limit(10);
+      
+      return {
+        total: Number(totalResult[0]?.count || 0),
+        byCenter: byCenterResult,
+        byType: byTypeResult,
+        lastPoll: this.lastPollTime,
+        lastPollStats: this.lastPollStats
+      };
+    } catch (error) {
+      console.error('Error getting CHP CAD stats:', error);
+      return {
+        total: 0,
+        byCenter: [],
+        byType: [],
+        lastPoll: this.lastPollTime,
+        lastPollStats: this.lastPollStats
+      };
+    }
+  }
+
+  isPollingActive(): boolean {
+    return this.pollingActive;
   }
 }

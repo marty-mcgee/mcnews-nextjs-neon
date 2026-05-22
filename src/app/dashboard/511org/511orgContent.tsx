@@ -32,42 +32,6 @@ interface BayAreaEvent {
   county?: string;
 }
 
-// Demo markers for Mendocino County to show map functionality
-const DEMO_MARKERS = [
-  {
-    id: 9991,
-    latitude: 39.1505,
-    longitude: -123.2076,
-    roadwayName: 'US-101',
-    eventType: 'Construction',
-    description: 'Road work near Ukiah - lane closure',
-  },
-  {
-    id: 9992,
-    latitude: 39.3005,
-    longitude: -123.7994,
-    roadwayName: 'CA-1',
-    eventType: 'Accident',
-    description: 'Vehicle accident near Mendocino coast',
-  },
-  {
-    id: 9993,
-    latitude: 38.9785,
-    longitude: -123.0711,
-    roadwayName: 'CA-128',
-    eventType: 'Road Work',
-    description: 'Road maintenance near Boonville',
-  },
-  {
-    id: 9994,
-    latitude: 39.4355,
-    longitude: -123.3555,
-    roadwayName: 'CA-20',
-    eventType: 'Hazard',
-    description: 'Tree down on roadway',
-  },
-];
-
 export default function BayArea511Content() {
   const [events, setEvents] = useState<BayAreaEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,6 +41,8 @@ export default function BayArea511Content() {
   const [selectedType, setSelectedType] = useState<string>('');
   const [availableTypes, setAvailableTypes] = useState<string[]>([]);
   const [showMap, setShowMap] = useState(true);
+  const [mapCenter, setMapCenter] = useState<[number, number]>([37.8, -122.4]); // Default to Bay Area
+  const [mapZoom, setMapZoom] = useState(8);
 
   const fetchData = async () => {
     try {
@@ -96,6 +62,25 @@ export default function BayArea511Content() {
         setTotalCount(data.count || data.data.length);
         const types = [...new Set(data.data.map((e: BayAreaEvent) => e.eventType).filter(Boolean))];
         setAvailableTypes(types.sort());
+        
+        // Auto-zoom map to show all events with coordinates
+        const eventsWithCoords = data.data.filter((e: BayAreaEvent) => e.latitude && e.longitude);
+        if (eventsWithCoords.length > 0) {
+          const lats = eventsWithCoords.map((e: BayAreaEvent) => e.latitude!);
+          const lngs = eventsWithCoords.map((e: BayAreaEvent) => e.longitude!);
+          const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+          const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+          setMapCenter([centerLat, centerLng]);
+          
+          // Adjust zoom based on spread
+          const latDiff = Math.max(...lats) - Math.min(...lats);
+          const lngDiff = Math.max(...lngs) - Math.min(...lngs);
+          const maxDiff = Math.max(latDiff, lngDiff);
+          if (maxDiff < 0.5) setMapZoom(10);
+          else if (maxDiff < 1) setMapZoom(9);
+          else if (maxDiff < 2) setMapZoom(8);
+          else setMapZoom(7);
+        }
       } else {
         setError('Failed to load Bay Area events');
       }
@@ -138,23 +123,23 @@ export default function BayArea511Content() {
     return 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300';
   };
 
-  const mendocinoEvents = events.filter(e => e.county?.toLowerCase() === 'mendocino');
-  const mendocinoWithCoordinates = mendocinoEvents.filter(e => e.latitude && e.longitude);
+  // Get all events with coordinates for the map
+  const mapEvents = events
+    .filter(event => event.latitude && event.longitude)
+    .map(event => ({
+      id: event.id,
+      latitude: event.latitude!,
+      longitude: event.longitude!,
+      roadwayName: event.roadwayName,
+      eventType: event.eventType,
+      description: event.description,
+    }));
+
+  const eventsWithCoords = events.filter(e => e.latitude && e.longitude);
+  const eventsWithoutCoords = events.filter(e => !e.latitude || !e.longitude);
   const activeCount = events.filter(e => e.eventType?.toLowerCase().includes('incident')).length;
   const constructionCount = events.filter(e => e.eventType?.toLowerCase().includes('construction')).length;
   const roadworkCount = events.filter(e => e.eventType?.toLowerCase().includes('roadwork')).length;
-
-  // Use real events if they have coordinates, otherwise use demo markers
-  const mapEvents = mendocinoWithCoordinates.length > 0 
-    ? mendocinoWithCoordinates.map(event => ({
-        id: event.id,
-        latitude: event.latitude!,
-        longitude: event.longitude!,
-        roadwayName: event.roadwayName,
-        eventType: event.eventType,
-        description: event.description,
-      }))
-    : DEMO_MARKERS;
 
   if (loading) {
     return (
@@ -243,17 +228,15 @@ export default function BayArea511Content() {
         </div>
       </div>
 
-      {/* Mendocino County Summary */}
+      {/* Map Stats Summary */}
       <div className="mb-6 p-4 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <MapPin className="w-5 h-5 text-purple-600" />
-            <span className="font-semibold text-purple-900 dark:text-purple-300">Mendocino County</span>
+            <span className="font-semibold text-purple-900 dark:text-purple-300">Live Map Data</span>
           </div>
           <div className="text-sm text-purple-700 dark:text-purple-400">
-            {mendocinoWithCoordinates.length > 0 
-              ? `${mendocinoWithCoordinates.length} real events on map`
-              : '4 demo locations shown (waiting for real coordinate data)'}
+            {eventsWithCoords.length} events on map • {eventsWithoutCoords.length} without coordinates
           </div>
         </div>
       </div>
@@ -291,7 +274,15 @@ export default function BayArea511Content() {
       {/* Map */}
       {showMap && (
         <div className="mb-6">
-          <SimpleMap events={mapEvents} center={[39.3, -123.5]} zoom={9} />
+          {mapEvents.length > 0 ? (
+            <SimpleMap events={mapEvents} center={mapCenter} zoom={mapZoom} />
+          ) : (
+            <div className="w-full h-[400px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex flex-col items-center justify-center">
+              <MapPin className="w-12 h-12 text-gray-400 mb-2" />
+              <p className="text-gray-500">No events with location data available</p>
+              <p className="text-sm text-gray-400 mt-1">Events will appear here when coordinates are available from 511.org</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -331,6 +322,12 @@ export default function BayArea511Content() {
                       {event.county && (
                         <span className="text-xs text-gray-400">{event.county}</span>
                       )}
+                      {event.latitude && event.longitude && (
+                        <span className="text-xs text-emerald-600 flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />
+                          On map
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-4 mt-3 text-xs text-gray-500 dark:text-gray-400">
@@ -350,12 +347,6 @@ export default function BayArea511Content() {
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         Starts: {new Date(event.startTime).toLocaleDateString()}
-                      </span>
-                    )}
-                    {event.latitude && event.longitude && (
-                      <span className="flex items-center gap-1 text-emerald-600">
-                        <MapPin className="w-3 h-3" />
-                        Located on map
                       </span>
                     )}
                   </div>

@@ -2,6 +2,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { 
+  RefreshCw, 
+  AlertTriangle, 
+  MapPin, 
+  Clock,
+  Building2,
+  TrendingUp
+} from 'lucide-react';
 
 interface CHPIncident {
   id: number;
@@ -13,6 +21,7 @@ interface CHPIncident {
   logTime: string;
   details: string;
   status: string;
+  centerName?: string;
 }
 
 export default function CHPLiveContent() {
@@ -29,7 +38,6 @@ export default function CHPLiveContent() {
       setLoading(true);
       setError(null);
       
-      // Build URL with filters
       let url = '/api/chp-cad?limit=200';
       if (selectedCounty && selectedCounty !== 'all') {
         url += `&county=${encodeURIComponent(selectedCounty)}`;
@@ -41,14 +49,11 @@ export default function CHPLiveContent() {
       if (data.success) {
         setIncidents(data.data);
         setTotalCount(data.count || data.data.length);
-        
-        // Extract unique counties for filter
         const counties = [...new Set(data.data.map((inc: CHPIncident) => inc.county).filter(Boolean))];
         setAvailableCounties(counties.sort());
       } else {
         setError('Failed to load CHP incidents');
       }
-      
     } catch (err) {
       console.error('Error fetching CHP incidents:', err);
       setError('Failed to load data');
@@ -63,10 +68,8 @@ export default function CHPLiveContent() {
       const response = await fetch('/api/chp-cad/poll?action=poll');
       const data = await response.json();
       if (data.success) {
-        // Your API returns stats with totalFetched and newCount
         const newCount = data.stats?.newCount || 0;
-        const totalFetched = data.stats?.totalFetched || 0;
-        alert(`CHP Live poll completed! Found ${newCount} new incidents (${totalFetched} total fetched).`);
+        alert(`CHP Live poll completed! Found ${newCount} new incidents.`);
         await fetchData();
       } else {
         alert('Poll failed: ' + (data.error || 'Unknown error'));
@@ -84,29 +87,27 @@ export default function CHPLiveContent() {
 
   const getIncidentTypeBadge = (type: string) => {
     const lowerType = type?.toLowerCase() || '';
-    if (lowerType.includes('sig')) return 'bg-red-100 text-red-800';
-    if (lowerType.includes('closure')) return 'bg-orange-100 text-orange-800';
-    if (lowerType.includes('fire')) return 'bg-red-100 text-red-800';
-    if (lowerType.includes('hazard')) return 'bg-yellow-100 text-yellow-800';
-    if (lowerType.includes('accident')) return 'bg-red-100 text-red-800';
-    if (lowerType.includes('roadwork')) return 'bg-yellow-100 text-yellow-800';
-    return 'bg-blue-100 text-blue-800';
+    if (lowerType.includes('sig')) return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300';
+    if (lowerType.includes('accident')) return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300';
+    if (lowerType.includes('fire')) return 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300';
+    if (lowerType.includes('hazard')) return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300';
+    return 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300';
   };
 
   if (loading) {
     return (
-      <div className="p-12 text-center">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
-        <p className="mt-2 text-gray-500">Loading CHP live incidents...</p>
+      <div className="flex justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-12 text-center text-red-500">
+      <div className="text-center py-12 text-red-500">
+        <AlertTriangle className="w-12 h-12 mx-auto mb-3" />
         <p>{error}</p>
-        <button onClick={fetchData} className="mt-4 px-4 py-2 bg-red-600 text-white rounded">
+        <button onClick={fetchData} className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg">
           Retry
         </button>
       </div>
@@ -114,93 +115,78 @@ export default function CHPLiveContent() {
   }
 
   return (
-    <div>
-      {/* Header with Refresh Button */}
-      <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
+    <div className="p-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">CHP Live Incidents</h2>
-          <p className="text-sm text-gray-500">Real-time incidents from CHP CAD system (Total: {totalCount} incidents)</p>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">CHP Live Incidents</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Real-time incidents from CHP CAD system</p>
         </div>
         <button
           onClick={pollData}
           disabled={isPolling}
-          className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all disabled:opacity-50 shadow-sm"
         >
-          {isPolling ? 'Polling...' : 'Refresh Data'}
+          <RefreshCw className={`w-4 h-4 ${isPolling ? 'animate-spin' : ''}`} />
+          {isPolling ? 'Fetching...' : 'Refresh Data'}
         </button>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-red-500">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-500 text-sm">Total Incidents</p>
-              <p className="text-3xl font-bold text-gray-900">{totalCount}</p>
+              <p className="text-red-600 dark:text-red-400 text-sm font-medium">Total Incidents</p>
+              <p className="text-2xl font-bold text-red-900 dark:text-red-300">{totalCount}</p>
             </div>
-            <div className="bg-red-100 rounded-full p-3">
-              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
+            <AlertTriangle className="w-8 h-8 text-red-500 opacity-50" />
           </div>
         </div>
-
-        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-orange-500">
+        <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-500 text-sm">Active Alerts</p>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="text-orange-600 dark:text-orange-400 text-sm font-medium">Active Alerts</p>
+              <p className="text-2xl font-bold text-orange-900 dark:text-orange-300">
                 {incidents.filter(i => i.status === 'active').length}
               </p>
             </div>
-            <div className="bg-orange-100 rounded-full p-3">
-              <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
+            <TrendingUp className="w-8 h-8 text-orange-500 opacity-50" />
           </div>
         </div>
-
-        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500">
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-500 text-sm">Counties</p>
-              <p className="text-3xl font-bold text-gray-900">{availableCounties.length}</p>
+              <p className="text-blue-600 dark:text-blue-400 text-sm font-medium">Counties</p>
+              <p className="text-2xl font-bold text-blue-900 dark:text-blue-300">{availableCounties.length}</p>
             </div>
-            <div className="bg-blue-100 rounded-full p-3">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
-              </svg>
-            </div>
+            <Building2 className="w-8 h-8 text-blue-500 opacity-50" />
           </div>
         </div>
-
-        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
+        <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-500 text-sm">Data Source</p>
-              <p className="text-xl font-bold text-gray-900">CHP CAD</p>
-              <p className="text-xs text-gray-400">Real-time feed</p>
+              <p className="text-purple-600 dark:text-purple-400 text-sm font-medium">Data Source</p>
+              <p className="text-lg font-bold text-purple-900 dark:text-purple-300">CHP CAD</p>
+              <p className="text-xs text-purple-600 dark:text-purple-400">Real-time</p>
             </div>
-            <div className="bg-purple-100 rounded-full p-3">
-              <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-              </svg>
-            </div>
+            <Clock className="w-8 h-8 text-purple-500 opacity-50" />
           </div>
         </div>
       </div>
 
       {/* County Filter */}
       {availableCounties.length > 0 && (
-        <div className="bg-white rounded-lg shadow mb-6 p-4">
+        <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
           <div className="flex items-center gap-4 flex-wrap">
-            <label className="font-medium text-gray-700">Filter by County:</label>
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-gray-500" />
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Filter by County:</label>
+            </div>
             <select
               value={selectedCounty}
               onChange={(e) => setSelectedCounty(e.target.value)}
-              className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+              className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-red-500"
             >
               <option value="">All Counties</option>
               {availableCounties.map((county) => (
@@ -210,95 +196,79 @@ export default function CHPLiveContent() {
             {selectedCounty && (
               <button
                 onClick={() => setSelectedCounty('')}
-                className="text-sm text-red-600 hover:text-red-800"
+                className="text-sm text-red-600 hover:text-red-700 dark:text-red-400"
               >
-                Clear filter
+                Clear
               </button>
             )}
           </div>
         </div>
       )}
 
-      {/* Incidents Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="px-6 py-4 border-b bg-gray-50">
-          <h3 className="text-lg font-semibold text-gray-900">Live Incidents</h3>
-          <p className="text-sm text-gray-500">Showing {incidents.length} of {totalCount} incidents</p>
+      {/* Incidents Grid */}
+      {incidents.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">
+          <AlertTriangle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+          <p className="text-lg">No incidents found</p>
+          <p className="text-sm mt-1">Click refresh to fetch current incidents from CHP CAD</p>
         </div>
-
-        {incidents.length === 0 ? (
-          <div className="p-12 text-center text-gray-500">
-            <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-lg">No incidents found</p>
-            <p className="text-sm mt-2">Click "Refresh Data" to fetch current incidents from CHP CAD.</p>
-            <button
-              onClick={pollData}
-              className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-            >
-              Fetch Live Incidents
-            </button>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">County</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">City</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {incidents.map((incident) => (
-                  <tr key={incident.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {incident.logTime ? new Date(incident.logTime).toLocaleTimeString() : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {incident.county || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          {incidents.map((incident) => (
+            <div key={incident.id} className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 hover:shadow-md transition-shadow border border-gray-100 dark:border-gray-700">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 mt-0.5">
+                  <div className="w-8 h-8 rounded-lg bg-white dark:bg-gray-900 shadow-sm flex items-center justify-center">
+                    <AlertTriangle className="w-4 h-4 text-red-500" />
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <div>
+                      <h3 className="font-semibold text-gray-900 dark:text-white">{incident.incidentType || 'Unknown'}</h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">{incident.location}</p>
+                    </div>
+                    <div className="flex-shrink-0">
                       <span className={`px-2 py-1 text-xs rounded-full ${getIncidentTypeBadge(incident.incidentType)}`}>
-                        {incident.incidentType || 'Unknown'}
+                        {incident.incidentType || 'Event'}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs">
-                      <div className="truncate" title={incident.location || ''}>
-                        {incident.location || 'N/A'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {incident.city || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 max-w-md">
-                      <div className="truncate" title={incident.details || ''}>
-                        {incident.details?.substring(0, 100) || 'N/A'}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        
-        <div className="px-6 py-4 border-t bg-gray-50 text-sm text-gray-500">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>Data source: CHP CAD Public Feed (unofficial)</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-4 mt-3 text-xs text-gray-500 dark:text-gray-400">
+                    {incident.county && (
+                      <span className="flex items-center gap-1">
+                        <Building2 className="w-3 h-3" />
+                        {incident.county}
+                      </span>
+                    )}
+                    {incident.city && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        {incident.city}
+                      </span>
+                    )}
+                    {incident.logTime && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {new Date(incident.logTime).toLocaleTimeString()}
+                      </span>
+                    )}
+                    {incident.centerName && (
+                      <span className="flex items-center gap-1">
+                        <Building2 className="w-3 h-3" />
+                        {incident.centerName} Center
+                      </span>
+                    )}
+                  </div>
+                  {incident.details && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{incident.details}</p>
+                  )}
+                </div>
+              </div>
             </div>
-            <div>Auto-refreshes every 5 minutes</div>
-          </div>
+          ))}
         </div>
-      </div>
+      )}
     </div>
   );
 }

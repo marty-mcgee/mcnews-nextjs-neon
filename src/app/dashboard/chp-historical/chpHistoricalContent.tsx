@@ -2,6 +2,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { 
+  RefreshCw, 
+  TrendingUp, 
+  Calendar, 
+  MapPin,
+  AlertTriangle,
+  BarChart3,
+  Download
+} from 'lucide-react';
 
 interface Collision {
   id: number;
@@ -22,30 +31,37 @@ export default function CHPHistoricalContent() {
   const [error, setError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [isPolling, setIsPolling] = useState(false);
+  const [selectedYear, setSelectedYear] = useState<string>('');
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [stats, setStats] = useState<any>(null);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Fetch collisions
-      const response = await fetch('/api/chp-historical/collisions?limit=100');
-      const data = await response.json();
-      
-      if (data.success) {
-        setCollisions(data.data);
-      } else {
-        setError('Failed to load collision data');
+      let url = '/api/chp-historical/collisions?limit=200';
+      if (selectedYear && selectedYear !== 'all') {
+        url += `&year=${selectedYear}`;
       }
       
-      // Fetch stats
-      const statsResponse = await fetch('/api/chp-historical/collisions/stats');
-      const statsData = await statsResponse.json();
+      const [collisionsRes, statsRes] = await Promise.all([
+        fetch(url),
+        fetch('/api/chp-historical/collisions/stats')
+      ]);
+      
+      const collisionsData = await collisionsRes.json();
+      const statsData = await statsRes.json();
+      
+      if (collisionsData.success) {
+        setCollisions(collisionsData.data);
+        setTotalCount(collisionsData.pagination?.total || collisionsData.data.length);
+      }
       
       if (statsData.success) {
-        setTotalCount(statsData.data.summary.totalCollisions);
+        setStats(statsData.data);
+        setAvailableYears(statsData.data.availableYears || []);
       }
-      
     } catch (err) {
       console.error('Error fetching CHP data:', err);
       setError('Failed to load data');
@@ -57,7 +73,7 @@ export default function CHPHistoricalContent() {
   const pollData = async () => {
     setIsPolling(true);
     try {
-      const response = await fetch('/api/chp-historical/poll?action=poll&limit=50');
+      const response = await fetch('/api/chp-historical/poll?action=poll&limit=100');
       const data = await response.json();
       if (data.success) {
         alert(`CHP Historical poll completed! ${data.stats?.newCount || 0} new records added.`);
@@ -74,29 +90,29 @@ export default function CHPHistoricalContent() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [selectedYear]);
 
   const getSeverityBadge = (severity: string) => {
     const s = severity?.toLowerCase() || '';
-    if (s.includes('fatal')) return 'bg-red-100 text-red-800';
-    if (s.includes('injury')) return 'bg-orange-100 text-orange-800';
-    return 'bg-gray-100 text-gray-800';
+    if (s.includes('fatal')) return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300';
+    if (s.includes('injury')) return 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300';
+    return 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300';
   };
 
   if (loading) {
     return (
-      <div className="p-12 text-center">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-        <p className="mt-2 text-gray-500">Loading CHP collision data...</p>
+      <div className="flex justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-12 text-center text-red-500">
+      <div className="text-center py-12 text-red-500">
+        <AlertTriangle className="w-12 h-12 mx-auto mb-3" />
         <p>{error}</p>
-        <button onClick={fetchData} className="mt-4 px-4 py-2 bg-purple-600 text-white rounded">
+        <button onClick={fetchData} className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg">
           Retry
         </button>
       </div>
@@ -104,169 +120,150 @@ export default function CHPHistoricalContent() {
   }
 
   return (
-    <div>
-      {/* Header with Refresh Button */}
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">CHP Historical Collisions</h2>
-          <p className="text-sm text-gray-500">Historical collision records from CHP CCRS (Total: {totalCount} records)</p>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">CHP Historical Collisions</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Historical collision records from CHP CCRS</p>
         </div>
-        <button
-          onClick={pollData}
-          disabled={isPolling}
-          className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
-        >
-          {isPolling ? 'Polling...' : 'Refresh Data'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={pollData}
+            disabled={isPolling}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all disabled:opacity-50 shadow-sm"
+          >
+            <RefreshCw className={`w-4 h-4 ${isPolling ? 'animate-spin' : ''}`} />
+            {isPolling ? 'Fetching...' : 'Refresh Data'}
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-500 text-sm">Total Collisions</p>
-              <p className="text-3xl font-bold text-gray-900">{totalCount}</p>
+              <p className="text-purple-600 dark:text-purple-400 text-sm font-medium">Total Collisions</p>
+              <p className="text-2xl font-bold text-purple-900 dark:text-purple-300">{totalCount.toLocaleString()}</p>
             </div>
-            <div className="bg-purple-100 rounded-full p-3">
-              <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
+            <BarChart3 className="w-8 h-8 text-purple-500 opacity-50" />
           </div>
         </div>
-
-        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-red-500">
+        <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-500 text-sm">Total Fatalities</p>
-              <p className="text-3xl font-bold text-gray-900">
-                {collisions.reduce((sum, c) => sum + (c.fatalities || 0), 0)}
+              <p className="text-red-600 dark:text-red-400 text-sm font-medium">Total Fatalities</p>
+              <p className="text-2xl font-bold text-red-900 dark:text-red-300">
+                {collisions.reduce((sum, c) => sum + (c.fatalities || 0), 0).toLocaleString()}
               </p>
             </div>
-            <div className="bg-red-100 rounded-full p-3">
-              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
+            <TrendingUp className="w-8 h-8 text-red-500 opacity-50" />
           </div>
         </div>
-
-        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-orange-500">
+        <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-500 text-sm">Total Injuries</p>
-              <p className="text-3xl font-bold text-gray-900">
-                {collisions.reduce((sum, c) => sum + (c.injuries || 0), 0)}
+              <p className="text-orange-600 dark:text-orange-400 text-sm font-medium">Total Injuries</p>
+              <p className="text-2xl font-bold text-orange-900 dark:text-orange-300">
+                {collisions.reduce((sum, c) => sum + (c.injuries || 0), 0).toLocaleString()}
               </p>
             </div>
-            <div className="bg-orange-100 rounded-full p-3">
-              <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
+            <AlertTriangle className="w-8 h-8 text-orange-500 opacity-50" />
           </div>
         </div>
-
-        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500">
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-500 text-sm">Data Source</p>
-              <p className="text-xl font-bold text-gray-900">CHP CCRS</p>
-              <p className="text-xs text-gray-400">via data.ca.gov</p>
+              <p className="text-blue-600 dark:text-blue-400 text-sm font-medium">Data Source</p>
+              <p className="text-lg font-bold text-blue-900 dark:text-blue-300">CHP CCRS</p>
+              <p className="text-xs text-blue-600 dark:text-blue-400">via data.ca.gov</p>
             </div>
-            <div className="bg-blue-100 rounded-full p-3">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-              </svg>
-            </div>
+            <Download className="w-8 h-8 text-blue-500 opacity-50" />
           </div>
         </div>
       </div>
+
+      {/* Year Filter */}
+      {availableYears.length > 0 && (
+        <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-gray-500" />
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Filter by Year:</label>
+            </div>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-purple-500"
+            >
+              <option value="">All Years</option>
+              {availableYears.map((year) => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+            {selectedYear && (
+              <button
+                onClick={() => setSelectedYear('')}
+                className="text-sm text-purple-600 hover:text-purple-700 dark:text-purple-400"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Collisions Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="px-6 py-4 border-b bg-gray-50">
-          <h3 className="text-lg font-semibold text-gray-900">Collision Records</h3>
-          <p className="text-sm text-gray-500">Showing latest {collisions.length} of {totalCount} records</p>
+      {collisions.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">
+          <BarChart3 className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+          <p className="text-lg">No collision records found</p>
+          <p className="text-sm mt-1">Click refresh to fetch data from CHP CCRS</p>
         </div>
-
-        {collisions.length === 0 ? (
-          <div className="p-12 text-center text-gray-500">
-            <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-lg">No collision records found</p>
-            <button
-              onClick={pollData}
-              className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-            >
-              Fetch CHP Data
-            </button>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Report #</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">City</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Severity</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fatalities</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Injuries</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Primary Factor</th>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 dark:bg-gray-800 rounded-xl">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Report #</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">City</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Severity</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Fatalities</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Injuries</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Primary Factor</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {collisions.map((collision) => (
+                <tr key={collision.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                  <td className="px-6 py-4 text-sm font-mono text-gray-900 dark:text-white">{collision.caseId}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                    {collision.collisionDate ? new Date(collision.collisionDate).toLocaleDateString() : 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{collision.city || 'N/A'}</td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${getSeverityBadge(collision.severity)}`}>
+                      <AlertTriangle className="w-3 h-3" />
+                      {collision.severity || 'Unknown'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm">
+                    <span className={`font-semibold ${collision.fatalities > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'}`}>
+                      {collision.fatalities || 0}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{collision.injuries || 0}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 max-w-md truncate">
+                    {collision.primaryFactor || 'N/A'}
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {collisions.map((collision) => (
-                  <tr key={collision.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
-                      {collision.caseId}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {collision.collisionDate ? new Date(collision.collisionDate).toLocaleDateString() : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {collision.city || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded-full ${getSeverityBadge(collision.severity)}`}>
-                        {collision.severity || 'Unknown'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className={`font-semibold ${collision.fatalities > 0 ? 'text-red-600' : 'text-gray-600'}`}>
-                        {collision.fatalities || 0}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {collision.injuries || 0}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 max-w-md">
-                      <div className="truncate" title={collision.primaryFactor || ''}>
-                        {collision.primaryFactor || 'N/A'}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        
-        <div className="px-6 py-4 border-t bg-gray-50 text-sm text-gray-500">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>Data source: CHP Collision and Citation Records System (CCRS) via data.ca.gov</span>
-            </div>
-            <div>Showing {collisions.length} of {totalCount} records</div>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </div>
+      )}
     </div>
   );
 }

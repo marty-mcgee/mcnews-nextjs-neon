@@ -6,11 +6,14 @@ import dynamic from 'next/dynamic';
 import { RefreshCw, AlertTriangle, MapPin, Clock, TrendingUp, Radio, Construction, Car } from 'lucide-react';
 
 // Dynamically import the map component to avoid SSR issues
-const LeafletMap = dynamic(() => import('@/components/map/LeafletMap'), {
+const SimpleMap = dynamic(() => import('@/components/map/SimpleMap'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-[400px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mx-auto mb-2"></div>
+        <p className="text-gray-500">Loading map...</p>
+      </div>
     </div>
   ),
 });
@@ -29,6 +32,42 @@ interface BayAreaEvent {
   county?: string;
 }
 
+// Demo markers for Mendocino County to show map functionality
+const DEMO_MARKERS = [
+  {
+    id: 9991,
+    latitude: 39.1505,
+    longitude: -123.2076,
+    roadwayName: 'US-101',
+    eventType: 'Construction',
+    description: 'Road work near Ukiah - lane closure',
+  },
+  {
+    id: 9992,
+    latitude: 39.3005,
+    longitude: -123.7994,
+    roadwayName: 'CA-1',
+    eventType: 'Accident',
+    description: 'Vehicle accident near Mendocino coast',
+  },
+  {
+    id: 9993,
+    latitude: 38.9785,
+    longitude: -123.0711,
+    roadwayName: 'CA-128',
+    eventType: 'Road Work',
+    description: 'Road maintenance near Boonville',
+  },
+  {
+    id: 9994,
+    latitude: 39.4355,
+    longitude: -123.3555,
+    roadwayName: 'CA-20',
+    eventType: 'Hazard',
+    description: 'Tree down on roadway',
+  },
+];
+
 export default function BayArea511Content() {
   const [events, setEvents] = useState<BayAreaEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,11 +77,6 @@ export default function BayArea511Content() {
   const [selectedType, setSelectedType] = useState<string>('');
   const [availableTypes, setAvailableTypes] = useState<string[]>([]);
   const [showMap, setShowMap] = useState(true);
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   const fetchData = async () => {
     try {
@@ -110,6 +144,18 @@ export default function BayArea511Content() {
   const constructionCount = events.filter(e => e.eventType?.toLowerCase().includes('construction')).length;
   const roadworkCount = events.filter(e => e.eventType?.toLowerCase().includes('roadwork')).length;
 
+  // Use real events if they have coordinates, otherwise use demo markers
+  const mapEvents = mendocinoWithCoordinates.length > 0 
+    ? mendocinoWithCoordinates.map(event => ({
+        id: event.id,
+        latitude: event.latitude!,
+        longitude: event.longitude!,
+        roadwayName: event.roadwayName,
+        eventType: event.eventType,
+        description: event.description,
+      }))
+    : DEMO_MARKERS;
+
   if (loading) {
     return (
       <div className="flex justify-center py-12">
@@ -129,18 +175,6 @@ export default function BayArea511Content() {
       </div>
     );
   }
-
-  // Prepare map events (only Mendocino County with coordinates)
-  const mapEvents = mendocinoWithCoordinates.map(event => ({
-    id: event.id,
-    latitude: event.latitude!,
-    longitude: event.longitude!,
-    roadwayName: event.roadwayName,
-    eventType: event.eventType,
-    description: event.description,
-    directionOfTravel: event.directionOfTravel,
-    lanesAffected: event.lanesAffected,
-  }));
 
   return (
     <div className="p-6">
@@ -217,7 +251,9 @@ export default function BayArea511Content() {
             <span className="font-semibold text-purple-900 dark:text-purple-300">Mendocino County</span>
           </div>
           <div className="text-sm text-purple-700 dark:text-purple-400">
-            {mendocinoWithCoordinates.length} events with locations • {mendocinoEvents.length - mendocinoWithCoordinates.length} without coordinates
+            {mendocinoWithCoordinates.length > 0 
+              ? `${mendocinoWithCoordinates.length} real events on map`
+              : '4 demo locations shown (waiting for real coordinate data)'}
           </div>
         </div>
       </div>
@@ -252,25 +288,10 @@ export default function BayArea511Content() {
         </div>
       )}
 
-      {/* Map - Only render on client side */}
-      {showMap && isClient && (
+      {/* Map */}
+      {showMap && (
         <div className="mb-6">
-          {mapEvents.length > 0 ? (
-            <LeafletMap events={mapEvents} center={[39.3, -123.5]} zoom={9} />
-          ) : (
-            <div className="w-full h-[400px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex flex-col items-center justify-center">
-              <MapPin className="w-12 h-12 text-gray-400 mb-2" />
-              <p className="text-gray-500">No events with location data available for Mendocino County</p>
-              <p className="text-sm text-gray-400 mt-1">Events will appear here when coordinates are available</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Loading placeholder for map when not client */}
-      {showMap && !isClient && (
-        <div className="mb-6 w-full h-[400px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+          <SimpleMap events={mapEvents} center={[39.3, -123.5]} zoom={9} />
         </div>
       )}
 

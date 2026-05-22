@@ -1,6 +1,6 @@
 // src/app/api/poll/chp-cad/route.ts
 import { NextResponse } from 'next/server';
-import { CHPCADPoller } from '@/lib/services/CHPCADPoller-working';
+import { CHPCADPoller } from '@/lib/services/CHPCADPoller';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';

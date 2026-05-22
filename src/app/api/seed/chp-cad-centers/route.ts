@@ -1,57 +1,54 @@
 // src/app/api/seed/chp-cad-centers/route.ts
 import { NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
+import { db } from '@/lib/db/client';
 import { chpCadCenters } from '@/lib/auth/schema';
 import { eq, and } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
-const CHP_CAD_CENTERS = [
-  // Bay Area Region
-  { centerCode: 'CC', centerName: 'Contra Costa', county: 'Contra Costa', region: 'Bay Area' },
-  { centerCode: 'GG', centerName: 'Golden Gate', county: 'San Francisco', region: 'Bay Area' },
-  { centerCode: 'SCL', centerName: 'Santa Clara', county: 'Santa Clara', region: 'Bay Area' },
-  { centerCode: 'SM', centerName: 'San Mateo', county: 'San Mateo', region: 'Bay Area' },
-  { centerCode: 'SOL', centerName: 'Solano', county: 'Solano', region: 'Bay Area' },
+// All CHP Communications Centers with correct codes from the HTML dropdown
+const ALL_CENTERS = [
+  // Northern Region
+  { centerCode: 'SACC', centerName: 'Sacramento', county: 'Sacramento', region: 'Northern' },
+  { centerCode: 'CHCC', centerName: 'Chico', county: 'Butte', region: 'Northern' },
+  { centerCode: 'HMCC', centerName: 'Humboldt', county: 'Humboldt', region: 'Northern' },
+  { centerCode: 'RDCC', centerName: 'Redding', county: 'Shasta', region: 'Northern' },
+  { centerCode: 'SUCC', centerName: 'Susanville', county: 'Lassen', region: 'Northern' },
+  { centerCode: 'TKCC', centerName: 'Truckee', county: 'Nevada', region: 'Northern' },
+  { centerCode: 'UKCC', centerName: 'Ukiah', county: 'Mendocino', region: 'Northern' },
+  { centerCode: 'YKCC', centerName: 'Yreka', county: 'Siskiyou', region: 'Northern' },
   
-  // Southern Region
-  { centerCode: 'LA', centerName: 'Los Angeles', county: 'Los Angeles', region: 'Southern' },
-  { centerCode: 'ORA', centerName: 'Orange', county: 'Orange', region: 'Southern' },
-  { centerCode: 'RIV', centerName: 'Riverside', county: 'Riverside', region: 'Southern' },
-  { centerCode: 'SBD', centerName: 'San Bernardino', county: 'San Bernardino', region: 'Southern' },
-  { centerCode: 'SD', centerName: 'San Diego', county: 'San Diego', region: 'Southern' },
-  { centerCode: 'VEN', centerName: 'Ventura', county: 'Ventura', region: 'Southern' },
+  // Bay Area Region
+  { centerCode: 'CCCC', centerName: 'Capitol', county: 'Sacramento', region: 'Bay Area' },
+  { centerCode: 'GGCC', centerName: 'Golden Gate', county: 'San Francisco', region: 'Bay Area' },
+  { centerCode: 'MYCC', centerName: 'Monterey', county: 'Monterey', region: 'Bay Area' },
+  { centerCode: 'SLCC', centerName: 'San Luis Obispo', county: 'San Luis Obispo', region: 'Bay Area' },
+  { centerCode: 'SKCCSTCC', centerName: 'Stockton', county: 'San Joaquin', region: 'Bay Area' },
   
   // Central Region
-  { centerCode: 'FRE', centerName: 'Fresno', county: 'Fresno', region: 'Central' },
-  { centerCode: 'KERN', centerName: 'Kern', county: 'Kern', region: 'Central' },
-  { centerCode: 'SJ', centerName: 'San Joaquin', county: 'San Joaquin', region: 'Central' },
-  { centerCode: 'SLO', centerName: 'San Luis Obispo', county: 'San Luis Obispo', region: 'Central' },
-  { centerCode: 'STA', centerName: 'Stanislaus', county: 'Stanislaus', region: 'Central' },
+  { centerCode: 'BFCC', centerName: 'Bakersfield', county: 'Kern', region: 'Central' },
+  { centerCode: 'FRCC', centerName: 'Fresno', county: 'Fresno', region: 'Central' },
+  { centerCode: 'MRCC', centerName: 'Merced', county: 'Merced', region: 'Central' },
   
-  // Northern Region
-  { centerCode: 'BUTT', centerName: 'Butte', county: 'Butte', region: 'Northern' },
-  { centerCode: 'EUREKA', centerName: 'Eureka', county: 'Humboldt', region: 'Northern' },
-  { centerCode: 'MEND', centerName: 'Mendocino', county: 'Mendocino', region: 'Northern' },
-  { centerCode: 'RED', centerName: 'Redding', county: 'Shasta', region: 'Northern' },
-  { centerCode: 'SAC', centerName: 'Sacramento', county: 'Sacramento', region: 'Northern' },
-  { centerCode: 'SON', centerName: 'Sonoma', county: 'Sonoma', region: 'Northern' },
-  { centerCode: 'UKI', centerName: 'Ukiah', county: 'Mendocino', region: 'Northern' },
-  { centerCode: 'YOLO', centerName: 'Yolo', county: 'Yolo', region: 'Northern' },
+  // Southern Region
+  { centerCode: 'BSCC', centerName: 'Barstow', county: 'San Bernardino', region: 'Southern' },
+  { centerCode: 'BICC', centerName: 'Bishop', county: 'Inyo', region: 'Southern' },
+  { centerCode: 'BCCC', centerName: 'Border', county: 'San Diego', region: 'Southern' },
+  { centerCode: 'ECCC', centerName: 'El Centro', county: 'Imperial', region: 'Southern' },
+  { centerCode: 'ICCC', centerName: 'Indio', county: 'Riverside', region: 'Southern' },
+  { centerCode: 'INCC', centerName: 'Inland', county: 'San Bernardino', region: 'Southern' },
+  { centerCode: 'LACC', centerName: 'Los Angeles', county: 'Los Angeles', region: 'Southern' },
+  { centerCode: 'OCCC', centerName: 'Orange', county: 'Orange', region: 'Southern' },
+  { centerCode: 'VTCC', centerName: 'Ventura', county: 'Ventura', region: 'Southern' },
 ];
 
 export async function GET() {
   try {
-    const connectionString = process.env.DATABASE_URL!;
-    const sqlClient = neon(connectionString);
-    const db = drizzle(sqlClient);
-    
     let inserted = 0;
     let skipped = 0;
     
-    for (const center of CHP_CAD_CENTERS) {
-      // ✅ Using correct Drizzle pattern - build whereClause
+    for (const center of ALL_CENTERS) {
+      // Check if center already exists
       const conditions = [eq(chpCadCenters.centerCode, center.centerCode)];
       const whereClause = and(...conditions);
       
@@ -62,9 +59,15 @@ export async function GET() {
         .limit(1);
       
       if (existing.length === 0) {
-        await db.insert(chpCadCenters).values(center);
+        await db.insert(chpCadCenters).values({
+          centerCode: center.centerCode,
+          centerName: center.centerName,
+          county: center.county,
+          region: center.region,
+          isActive: true,
+        });
         inserted++;
-        console.log(`✓ Inserted ${center.centerName}`);
+        console.log(`  ✓ Inserted ${center.centerName} (${center.centerCode})`);
       } else {
         skipped++;
       }
@@ -72,8 +75,13 @@ export async function GET() {
     
     return NextResponse.json({
       success: true,
-      message: 'CHP CAD Centers seeded',
-      stats: { inserted, skipped, total: CHP_CAD_CENTERS.length }
+      message: 'CHP CAD Centers seeded successfully',
+      stats: { 
+        inserted, 
+        skipped, 
+        total: ALL_CENTERS.length,
+        centers: ALL_CENTERS.map(c => ({ code: c.centerCode, name: c.centerName }))
+      }
     });
     
   } catch (error) {

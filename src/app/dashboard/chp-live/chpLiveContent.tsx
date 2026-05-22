@@ -63,8 +63,10 @@ export default function CHPLiveContent() {
       const response = await fetch('/api/poll/chp-cad?action=poll');
       const data = await response.json();
       if (data.success) {
-        const totalIncidents = data.stats?.total || 0;
-        alert(`CHP Live poll completed! Found ${totalIncidents} incidents.`);
+        // Your API returns stats with totalFetched and newCount
+        const newCount = data.stats?.newCount || 0;
+        const totalFetched = data.stats?.totalFetched || 0;
+        alert(`CHP Live poll completed! Found ${newCount} new incidents (${totalFetched} total fetched).`);
         await fetchData();
       } else {
         alert('Poll failed: ' + (data.error || 'Unknown error'));

@@ -2,107 +2,95 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { db } from '@/lib/db/client';
-import { chpCadIncidents, chpCadCenters, apiRequestLogs } from '@/lib/auth/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { chpCadIncidents, chpCadCenters } from '@/lib/auth/schema';
+import { eq, and } from 'drizzle-orm';
 
-// Hardcoded centers data for lookup/insert
-const CENTERS_DATA = [
-  { code: 'UKI', name: 'Ukiah', county: 'Mendocino', region: 'Northern' },
-  { code: 'EUREKA', name: 'Eureka', county: 'Humboldt', region: 'Northern' },
-  { code: 'LA', name: 'Los Angeles', county: 'Los Angeles', region: 'Southern' },
-  { code: 'SAC', name: 'Sacramento', county: 'Sacramento', region: 'Northern' },
-  { code: 'CC', name: 'Contra Costa', county: 'Contra Costa', region: 'Bay Area' },
-  { code: 'GG', name: 'Golden Gate', county: 'San Francisco', region: 'Bay Area' },
-  { code: 'SCL', name: 'Santa Clara', county: 'Santa Clara', region: 'Bay Area' },
-  { code: 'SM', name: 'San Mateo', county: 'San Mateo', region: 'Bay Area' },
-  { code: 'SOL', name: 'Solano', county: 'Solano', region: 'Bay Area' },
-  { code: 'ORA', name: 'Orange', county: 'Orange', region: 'Southern' },
-  { code: 'RIV', name: 'Riverside', county: 'Riverside', region: 'Southern' },
-  { code: 'SBD', name: 'San Bernardino', county: 'San Bernardino', region: 'Southern' },
-  { code: 'SD', name: 'San Diego', county: 'San Diego', region: 'Southern' },
-  { code: 'VEN', name: 'Ventura', county: 'Ventura', region: 'Southern' },
-  { code: 'FRE', name: 'Fresno', county: 'Fresno', region: 'Central' },
-  { code: 'KERN', name: 'Kern', county: 'Kern', region: 'Central' },
-  { code: 'SJ', name: 'San Joaquin', county: 'San Joaquin', region: 'Central' },
-  { code: 'SLO', name: 'San Luis Obispo', county: 'San Luis Obispo', region: 'Central' },
-  { code: 'STA', name: 'Stanislaus', county: 'Stanislaus', region: 'Central' },
-  { code: 'BUTT', name: 'Butte', county: 'Butte', region: 'Northern' },
-  { code: 'MEND', name: 'Mendocino', county: 'Mendocino', region: 'Northern' },
-  { code: 'RED', name: 'Redding', county: 'Shasta', region: 'Northern' },
-  { code: 'SON', name: 'Sonoma', county: 'Sonoma', region: 'Northern' },
-  { code: 'YOLO', name: 'Yolo', county: 'Yolo', region: 'Northern' },
+const CENTERS_LIST = [
+  { code: 'UKCC', name: 'Ukiah', county: 'Mendocino' },
+  { code: 'HMCC', name: 'Humboldt', county: 'Humboldt' },
+  // { code: 'SACC', name: 'Sacramento', county: 'Sacramento' },
+  // { code: 'LACC', name: 'Los Angeles', county: 'Los Angeles' },
+  // { code: 'GGCC', name: 'Golden Gate', county: 'San Francisco' },
+  // { code: 'SKCCSTCC', name: 'Stockton', county: 'San Joaquin' },
+  // { code: 'OCCC', name: 'Orange', county: 'Orange' },
+  // { code: 'FRCC', name: 'Fresno', county: 'Fresno' },
+  // { code: 'BFCC', name: 'Bakersfield', county: 'Kern' },
 ];
 
 export class CHPCADPoller {
   private baseUrl = 'https://cad.chp.ca.gov/Traffic.aspx';
   private userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
-  
-  private pollingActive = false;
-  private lastPollTime: Date | null = null;
-  private lastPollStats: any = null;
 
-  // Ensure all centers exist in the database
-  private async ensureCenters() {
-    for (const center of CENTERS_DATA) {
-      const conditions = [eq(chpCadCenters.centerCode, center.code)];
+  async pollAll() {
+    console.log(`\n🚦 Starting CHP CAD poll at ${new Date().toISOString()}`);
+    
+    let allIncidents: any[] = [];
+    let totalNew = 0;
+    
+    for (const center of CENTERS_LIST) {
+      const incidents = await this.fetchIncidentsForCenter(center);
+      console.log(`  ${center.name}: ${incidents.length} incidents found`);
+      allIncidents = [...allIncidents, ...incidents];
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    
+    for (const incident of allIncidents) {
+      const conditions = [eq(chpCadIncidents.sourceId, incident.sourceId)];
       const whereClause = and(...conditions);
       
       const existing = await db
         .select()
-        .from(chpCadCenters)
+        .from(chpCadIncidents)
         .where(whereClause)
         .limit(1);
       
       if (existing.length === 0) {
-        await db.insert(chpCadCenters).values({
-          centerCode: center.code,
-          centerName: center.name,
-          county: center.county,
-          region: center.region,
-          isActive: true,
-        });
-        console.log(`  Created center: ${center.name}`);
+        await db.insert(chpCadIncidents).values(incident);
+        totalNew++;
       }
     }
+    
+    console.log(`✅ CHP CAD Poll complete: ${allIncidents.length} total, ${totalNew} new`);
+    
+    return { success: true, stats: { totalFetched: allIncidents.length, newCount: totalNew } };
   }
 
-  // Get center ID by code
-  private async getCenterId(code: string): Promise<number | null> {
-    const conditions = [eq(chpCadCenters.centerCode, code)];
-    const whereClause = and(...conditions);
-    
-    const result = await db
-      .select({ id: chpCadCenters.id })
-      .from(chpCadCenters)
-      .where(whereClause)
-      .limit(1);
-    
-    return result[0]?.id || null;
-  }
-
-  async fetchIncidentsForCenter(center: { code: string; name: string; county: string }) {
+  private async fetchIncidentsForCenter(center: { code: string; name: string; county: string }) {
     try {
-      console.log(`  Fetching CHP incidents for ${center.name} (${center.code})...`);
+      console.log(`  Fetching ${center.name} (${center.code})...`);
       
+      // Get center ID from database
+      const centerConditions = [eq(chpCadCenters.centerCode, center.code)];
+      const centerWhere = and(...centerConditions);
+      
+      const centerRecord = await db
+        .select({ id: chpCadCenters.id })
+        .from(chpCadCenters)
+        .where(centerWhere)
+        .limit(1);
+      
+      const centerId = centerRecord[0]?.id || null;
+      
+      // Get initial page to capture viewstate
       const initialResponse = await axios.get(this.baseUrl, {
         headers: { 'User-Agent': this.userAgent },
         timeout: 15000
       });
       
-      const $ = cheerio.load(initialResponse.data);
+      const $init = cheerio.load(initialResponse.data);
       
-      const viewState = $('#__VIEWSTATE').val() || '';
-      const viewStateGenerator = $('#__VIEWSTATEGENERATOR').val() || '';
-      const eventValidation = $('#__EVENTVALIDATION').val() || '';
+      const viewState = $init('#__VIEWSTATE').val() || '';
+      const viewStateGenerator = $init('#__VIEWSTATEGENERATOR').val() || '';
+      const eventValidation = $init('#__EVENTVALIDATION').val() || '';
       
       const formData = new URLSearchParams();
       formData.append('__VIEWSTATE', viewState);
       formData.append('__VIEWSTATEGENERATOR', viewStateGenerator);
       if (eventValidation) formData.append('__EVENTVALIDATION', eventValidation);
       formData.append('ddlComCenter', center.code);
-      formData.append('btnSubmit', 'Submit');
+      formData.append('btnCCGo', 'OK');
       
-      const postResponse = await axios.post(this.baseUrl, formData, {
+      const response = await axios.post(this.baseUrl, formData, {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'User-Agent': this.userAgent,
@@ -110,197 +98,82 @@ export class CHPCADPoller {
         timeout: 15000
       });
       
-      const incidents = this.parseIncidentsFromHtml(postResponse.data, center);
-      console.log(`    Found ${incidents.length} incidents`);
+      const incidents = this.parseIncidentsFromHtml(response.data, center, centerId);
       return incidents;
       
     } catch (error) {
-      console.error(`  Failed to fetch data for ${center.name}:`, error);
+      console.error(`  Error fetching ${center.name}:`, error);
       return [];
     }
   }
 
-  private parseIncidentsFromHtml(html: string, center: { code: string; name: string; county: string }) {
+  private parseIncidentsFromHtml(html: string, center: any, centerId: number | null) {
     const $ = cheerio.load(html);
     const incidents: any[] = [];
     
-    let incidentTable: cheerio.Cheerio | undefined;
-    const tables = $('table');
-    
-    tables.each((index, table) => {
-      const headerText = $(table).text();
-      if (headerText.includes('No.') && headerText.includes('Time') && headerText.includes('Type')) {
-        incidentTable = $(table);
-        return false;
-      }
-    });
+    // Find the table by its ID
+    const incidentTable = $('#gvIncidents');
     
     if (!incidentTable || incidentTable.length === 0) {
+      console.log(`    No incident table found for ${center.name}`);
       return [];
     }
     
-    const rows = incidentTable.find('tbody tr').length ? incidentTable.find('tbody tr') : incidentTable.find('tr');
+    // Get all data rows
+    const rows = incidentTable.find('tr.gvRow, tr.gvAltRow');
     const now = new Date();
     
     rows.each((index, row) => {
-      if ($(row).find('th').length > 0) return;
-      
       const cells = $(row).find('td');
-      if (cells.length < 4) return;
+      if (cells.length < 7) return;
       
-      const incidentNumber = this.cleanText(cells.eq(1).text());
-      const incidentTime = this.cleanText(cells.eq(2).text());
-      const incidentType = this.cleanText(cells.eq(3).text());
-      const location = this.cleanText(cells.eq(4).text());
-      const locationDesc = this.cleanText(cells.eq(5).text());
-      const area = this.cleanText(cells.eq(6).text());
+      const incidentNumber = cells.eq(1).text().trim();
+      const incidentTime = cells.eq(2).text().trim();
+      const incidentType = cells.eq(3).text().trim();
+      const location = cells.eq(4).text().trim();
+      const locationDesc = cells.eq(5).text().trim();
+      const area = cells.eq(6).text().trim();
       
       if (!incidentType && !location) return;
       
+      // Build full location string
       let fullLocation = location;
-      if (locationDesc && locationDesc !== '--') fullLocation += ` (${locationDesc})`;
-      if (area && area !== '--') fullLocation += ` - ${area}`;
+      if (locationDesc && locationDesc !== '&nbsp;' && locationDesc !== '') {
+        fullLocation += ` (${locationDesc})`;
+      }
+      if (area && area !== '&nbsp;' && area !== '') {
+        fullLocation += ` - ${area}`;
+      }
       
-      const logTime = this.parseIncidentTime(incidentTime, now);
-      const sourceId = `${center.code}_${incidentNumber || now.getTime()}_${index}`;
+      // Parse time
+      let logTime = new Date(now);
+      if (incidentTime) {
+        try {
+          const [time, modifier] = incidentTime.split(' ');
+          let [hours, minutes] = time.split(':').map(Number);
+          if (modifier === 'PM' && hours !== 12) hours += 12;
+          if (modifier === 'AM' && hours === 12) hours = 0;
+          logTime.setHours(hours, minutes || 0, 0, 0);
+        } catch (e) {
+          // Keep default time
+        }
+      }
       
       incidents.push({
-        sourceId,
-        centerId: null, // Will be set after we get the ID
-        centerCode: center.code,
+        sourceId: `${center.code}_${incidentNumber || now.getTime()}_${index}`,
+        centerId: centerId,
         incidentType: incidentType || 'Unknown',
-        location: fullLocation || 'Unknown',
+        location: fullLocation || location || 'Unknown',
         city: area || '',
         county: center.county,
         logTime: logTime,
-        details: `No. ${incidentNumber} - ${incidentType}`,
+        details: `${incidentType} at ${location}`,
         status: 'active',
         fetchedAt: now,
       });
     });
     
+    console.log(`    Parsed ${incidents.length} incidents for ${center.name}`);
     return incidents;
-  }
-
-  private parseIncidentTime(timeStr: string, today: Date): Date {
-    if (!timeStr) return today;
-    try {
-      const [time, modifier] = timeStr.split(' ');
-      let [hours, minutes] = time.split(':').map(Number);
-      if (modifier === 'PM' && hours !== 12) hours += 12;
-      if (modifier === 'AM' && hours === 12) hours = 0;
-      const date = new Date(today);
-      date.setHours(hours, minutes || 0, 0, 0);
-      return date;
-    } catch {
-      return today;
-    }
-  }
-
-  private cleanText(text: string): string {
-    return text.replace(/\s+/g, ' ').trim();
-  }
-
-  async pollAll(): Promise<{ success: boolean; stats?: any; error?: string }> {
-    if (this.pollingActive) {
-      return { success: false, error: 'Polling already in progress' };
-    }
-    
-    this.pollingActive = true;
-    const startTime = Date.now();
-    
-    try {
-      console.log(`\n🚦 Starting CHP CAD poll at ${new Date().toISOString()}`);
-      
-      // First, ensure all centers exist in the database
-      await this.ensureCenters();
-      
-      console.log(`  Polling ${CENTERS_DATA.length} communication centers`);
-      
-      let allIncidents: any[] = [];
-      const byCenter: Record<string, number> = {};
-      
-      for (const center of CENTERS_DATA) {
-        // Get the center ID for this center
-        const centerId = await this.getCenterId(center.code);
-        
-        const incidents = await this.fetchIncidentsForCenter(center);
-        
-        // Set the centerId for each incident
-        const incidentsWithCenterId = incidents.map(inc => ({
-          ...inc,
-          centerId: centerId,
-        }));
-        
-        allIncidents = [...allIncidents, ...incidentsWithCenterId];
-        byCenter[center.name] = incidents.length;
-        
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-      
-      let newCount = 0;
-      
-      for (const incident of allIncidents) {
-        const existing = await db
-          .select()
-          .from(chpCadIncidents)
-          .where(eq(chpCadIncidents.sourceId, incident.sourceId))
-          .limit(1);
-        
-        if (existing.length === 0) {
-          await db.insert(chpCadIncidents).values(incident);
-          newCount++;
-        }
-      }
-      
-      const duration = Date.now() - startTime;
-      this.lastPollTime = new Date();
-      this.lastPollStats = { 
-        totalFetched: allIncidents.length, 
-        newCount, 
-        byCenter, 
-        duration 
-      };
-      
-      console.log(`✅ CHP CAD Poll complete: ${allIncidents.length} incidents, ${newCount} new`);
-      
-      return {
-        success: true,
-        stats: this.lastPollStats,
-        timestamp: new Date().toISOString()
-      };
-      
-    } catch (error) {
-      console.error('CHP CAD Polling error:', error);
-      return { success: false, error: String(error) };
-    } finally {
-      this.pollingActive = false;
-    }
-  }
-
-  async getStats() {
-    const total = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(chpCadIncidents);
-    
-    const byCenterStats = await db
-      .select({
-        centerName: chpCadCenters.centerName,
-        count: sql<number>`COUNT(*)`,
-      })
-      .from(chpCadIncidents)
-      .leftJoin(chpCadCenters, eq(chpCadIncidents.centerId, chpCadCenters.id))
-      .groupBy(chpCadCenters.centerName);
-    
-    return {
-      total: Number(total[0]?.count || 0),
-      byCenter: byCenterStats,
-      lastPoll: this.lastPollTime,
-      lastPollStats: this.lastPollStats
-    };
-  }
-
-  isPollingActive(): boolean {
-    return this.pollingActive;
   }
 }

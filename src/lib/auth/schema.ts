@@ -111,13 +111,9 @@ export const accountRelations = relations(account, ({ one }) => ({
 }));
 
 
-
-
-
-
-// ### CalTrans
-
-// Districts table
+// ============================================
+// 0. Caltrans Districts Table
+// ============================================
 export const caltransDistricts = pgTable('caltrans_districts', {
   districtId: integer('district_id').primaryKey(),
   districtName: varchar('district_name', { length: 100 }),
@@ -127,189 +123,6 @@ export const caltransDistricts = pgTable('caltrans_districts', {
 }, (table) => ({
   regionIdx: index('idx_districts_region').on(table.region),
 }));
-
-// // Main lane closures table
-// export const laneClosures = pgTable('lane_closures', {
-//   closureId: serial('closure_id').primaryKey(),
-//   sourceId: varchar('source_id', { length: 100 }).unique(),
-//   district: integer('district').references(() => caltransDistricts.districtId),
-//   route: varchar('route', { length: 20 }),
-//   direction: varchar('direction', { length: 10 }),
-//   closureType: varchar('closure_type', { length: 50 }),
-//   closureSubtype: varchar('closure_subtype', { length: 50 }),
-//   lanesAffected: text('lanes_affected'),
-//   lanesClosed: text('lanes_closed'),
-//   laneConfiguration: text('lane_configuration'),
-//   startDate: timestamp('start_date', { mode: 'string' }),
-//   endDate: timestamp('end_date', { mode: 'string' }),
-//   startTime: varchar('start_time', { length: 8 }),
-//   endTime: varchar('end_time', { length: 8 }),
-//   startTimestamp: timestamp('start_timestamp', { mode: 'date' }),
-//   endTimestamp: timestamp('end_timestamp', { mode: 'date' }),
-//   description: text('description'),
-//   locationDescription: text('location_description'),
-//   latitude: decimal('latitude', { precision: 10, scale: 7 }),
-//   longitude: decimal('longitude', { precision: 10, scale: 7 }),
-//   county: varchar('county', { length: 100 }),
-//   city: varchar('city', { length: 100 }),
-//   status: varchar('status', { length: 20 }).default('active'),
-//   firstSeen: timestamp('first_seen').defaultNow(),
-//   lastSeen: timestamp('last_seen').defaultNow(),
-//   lastModified: timestamp('last_modified').defaultNow(),
-//   timesSeen: integer('times_seen').default(1),
-//   rawData: jsonb('raw_data'),
-//   createdAt: timestamp('created_at').defaultNow(),
-// }, (table) => ({
-//   // Standard indexes
-//   sourceIdIdx: uniqueIndex('idx_closures_source_id').on(table.sourceId),
-//   districtIdx: index('idx_closures_district').on(table.district),
-//   routeIdx: index('idx_closures_route').on(table.route),
-//   statusIdx: index('idx_closures_status').on(table.status),
-//   startTimestampIdx: index('idx_closures_start_timestamp').on(table.startTimestamp),
-//   lastSeenIdx: index('idx_closures_last_seen').on(table.lastSeen),
-//   countyIdx: index('idx_closures_county').on(table.county),
-//   // Composite indexes
-//   activeClosuresIdx: index('idx_closures_active').on(table.status, table.lastSeen).where(sql`${table.status} = 'active'`),
-//   dateRangeIdx: index('idx_closures_dates').on(table.startDate, table.endDate),
-// }));
-
-// // API request logs table
-// export const apiRequestLogs = pgTable('api_request_logs', {
-//   logId: serial('log_id').primaryKey(),
-//   endpoint: varchar('endpoint', { length: 255 }),
-//   district: integer('district'),
-//   requestTimestamp: timestamp('request_timestamp').defaultNow(),
-//   responseTimeMs: integer('response_time_ms'),
-//   statusCode: integer('status_code'),
-//   success: boolean('success'),
-//   recordsFetched: integer('records_fetched').default(0),
-//   errorMessage: text('error_message'),
-//   responseSizeBytes: integer('response_size_bytes'),
-// }, (table) => ({
-//   timestampIdx: index('idx_api_logs_timestamp').on(table.requestTimestamp),
-//   successIdx: index('idx_api_logs_success').on(table.success),
-// }));
-
-// // Snapshots table for analytics
-// export const laneClosuresSnapshots = pgTable('lane_closures_snapshots', {
-//   snapshotId: serial('snapshot_id').primaryKey(),
-//   snapshotTimestamp: timestamp('snapshot_timestamp').defaultNow(),
-//   district: integer('district'),
-//   totalClosures: integer('total_closures'),
-//   closuresByType: jsonb('closures_by_type'),
-//   closuresByRoute: jsonb('closures_by_route'),
-//   rawSummary: jsonb('raw_summary'),
-// }, (table) => ({
-//   timestampIdx: index('idx_snapshots_timestamp').on(table.snapshotTimestamp),
-//   districtIdx: index('idx_snapshots_district').on(table.district),
-// }));
-
-// // Define relationships
-// export const laneClosuresRelations = relations(laneClosures, ({ one }) => ({
-//   district: one(caltransDistricts, {
-//     fields: [laneClosures.district],
-//     references: [caltransDistricts.districtId],
-//   }),
-// }));
-
-// export const caltransDistrictsRelations = relations(caltransDistricts, ({ many }) => ({
-//   closures: many(laneClosures),
-// }));
-
-// // Types for use in the application
-// export type LaneClosure = typeof laneClosures.$inferSelect;
-// export type NewLaneClosure = typeof laneClosures.$inferInsert;
-// export type ApiRequestLog = typeof apiRequestLogs.$inferSelect;
-// export type NewApiRequestLog = typeof apiRequestLogs.$inferInsert;
-// export type CaltransDistrict = typeof caltransDistricts.$inferSelect;
-
-
-
-// // db/schema.ts (Add this table)
-// export const chpCollisions = pgTable('chp_collisions', {
-//   id: serial('id').primaryKey(),
-//   caseId: varchar('case_id', { length: 50 }).unique(),
-//   collisionDate: timestamp('collision_date', { mode: 'date' }),
-//   collisionYear: integer('collision_year'),
-//   severity: varchar('severity', { length: 50 }),
-//   county: varchar('county', { length: 100 }),
-//   city: varchar('city', { length: 100 }),
-//   location: text('location'),
-//   latitude: numeric('latitude', { precision: 10, scale: 7 }).$type<number>(),
-//   longitude: numeric('longitude', { precision: 10, scale: 7 }).$type<number>(),
-//   primaryFactor: text('primary_factor'),
-//   weather: varchar('weather', { length: 50 }),
-//   lighting: varchar('lighting', { length: 50 }),
-//   injuries: integer('injuries').default(0),
-//   fatalities: integer('fatalities').default(0),
-//   rawData: jsonb('raw_data'),
-//   fetchedAt: timestamp('fetched_at').defaultNow(),
-//   lastSeen: timestamp('last_seen').defaultNow(),
-//   updatedAt: timestamp('updated_at').defaultNow(),
-// }, (table) => ({
-//   countyIdx: index('idx_chp_county').on(table.county),
-//   severityIdx: index('idx_chp_severity').on(table.severity),
-//   yearIdx: index('idx_chp_year').on(table.collisionYear),
-//   dateIdx: index('idx_chp_date').on(table.collisionDate),
-// }));
-
-
-// // src/lib/schema.ts - Add this table
-// export const chpCadIncidents = pgTable('chp_cad_incidents', {
-//   id: serial('id').primaryKey(),
-//   sourceId: varchar('source_id', { length: 100 }).unique(),
-//   incidentType: varchar('incident_type', { length: 100 }),
-//   location: text('location'),
-//   city: varchar('city', { length: 100 }),
-//   county: varchar('county', { length: 100 }),
-//   logTime: timestamp('log_time'),
-//   details: text('details'),
-//   latitude: numeric('latitude', { precision: 10, scale: 7 }).$type<number>(),
-//   longitude: numeric('longitude', { precision: 10, scale: 7 }).$type<number>(),
-//   status: varchar('status', { length: 20 }).default('active'),
-//   fetchedAt: timestamp('fetched_at').defaultNow(),
-//   createdAt: timestamp('created_at').defaultNow(),
-// }, (table) => ({
-//   countyIdx: index('idx_chp_cad_county').on(table.county),
-//   typeIdx: index('idx_chp_cad_type').on(table.incidentType),
-//   statusIdx: index('idx_chp_cad_status').on(table.status),
-//   timeIdx: index('idx_chp_cad_time').on(table.logTime),
-// }));
-
-
-
-// // 511.org
-
-// // src/lib/schema.ts
-// export const bayAreaTrafficEvents = pgTable('bay_area_traffic_events', {
-//   id: serial('id').primaryKey(),
-//   sourceId: varchar('source_id', { length: 100 }).unique(),
-//   jurisdiction: varchar('jurisdiction', { length: 50 }).default('SF Bay Area'),
-//   eventType: varchar('event_type', { length: 100 }),
-//   eventSubType: varchar('event_sub_type', { length: 100 }),
-//   severity: varchar('severity', { length: 50 }),
-//   status: varchar('status', { length: 20 }).default('active'),
-//   title: text('title'),
-//   description: text('description'),
-//   roadwayName: varchar('roadway_name', { length: 100 }),
-//   directionOfTravel: varchar('direction_of_travel', { length: 50 }),
-//   lanesAffected: text('lanes_affected'),
-//   isFullClosure: boolean('is_full_closure'),
-//   latitude: numeric('latitude', { precision: 10, scale: 7 }).$type<number>(),
-//   longitude: numeric('longitude', { precision: 10, scale: 7 }).$type<number>(),
-//   startTime: timestamp('start_time'),
-//   endTime: timestamp('end_time'),
-//   lastUpdated: timestamp('last_updated'),
-//   rawData: jsonb('raw_data'),
-//   fetchedAt: timestamp('fetched_at').defaultNow(),
-//   createdAt: timestamp('created_at').defaultNow(),
-// }, (table) => ({
-//   typeIdx: index('idx_bay_area_type').on(table.eventType),
-//   statusIdx: index('idx_bay_area_status').on(table.status),
-//   routeIdx: index('idx_bay_area_route').on(table.roadwayName),
-//   timeIdx: index('idx_bay_area_time').on(table.startTime),
-// }));
-
 
 // ============================================
 // 1. Caltrans Lane Closures Table
@@ -435,11 +248,8 @@ export const apiRequestLogs = pgTable('api_request_logs', {
 }));
 
 // ============================================
-// 5. CHP CAD Incidents Table (Future)
+// 5. CHP CAD Incidents Tables
 // ============================================
-// src/lib/auth/schema.ts - Add this table
-
-// src/lib/auth/schema.ts
 
 // CHP CAD Communications Centers table
 export const chpCadCenters = pgTable('chp_cad_centers', {
@@ -512,3 +322,190 @@ export const cctvCameras = pgTable('cctv_cameras', {
   rawData: jsonb('raw_data'),
   fetchedAt: timestamp('fetched_at').defaultNow(),
 });
+
+
+// ============================================
+// ### CalTrans
+// ============================================
+
+// // Main lane closures table
+// export const laneClosures = pgTable('lane_closures', {
+//   closureId: serial('closure_id').primaryKey(),
+//   sourceId: varchar('source_id', { length: 100 }).unique(),
+//   district: integer('district').references(() => caltransDistricts.districtId),
+//   route: varchar('route', { length: 20 }),
+//   direction: varchar('direction', { length: 10 }),
+//   closureType: varchar('closure_type', { length: 50 }),
+//   closureSubtype: varchar('closure_subtype', { length: 50 }),
+//   lanesAffected: text('lanes_affected'),
+//   lanesClosed: text('lanes_closed'),
+//   laneConfiguration: text('lane_configuration'),
+//   startDate: timestamp('start_date', { mode: 'string' }),
+//   endDate: timestamp('end_date', { mode: 'string' }),
+//   startTime: varchar('start_time', { length: 8 }),
+//   endTime: varchar('end_time', { length: 8 }),
+//   startTimestamp: timestamp('start_timestamp', { mode: 'date' }),
+//   endTimestamp: timestamp('end_timestamp', { mode: 'date' }),
+//   description: text('description'),
+//   locationDescription: text('location_description'),
+//   latitude: decimal('latitude', { precision: 10, scale: 7 }),
+//   longitude: decimal('longitude', { precision: 10, scale: 7 }),
+//   county: varchar('county', { length: 100 }),
+//   city: varchar('city', { length: 100 }),
+//   status: varchar('status', { length: 20 }).default('active'),
+//   firstSeen: timestamp('first_seen').defaultNow(),
+//   lastSeen: timestamp('last_seen').defaultNow(),
+//   lastModified: timestamp('last_modified').defaultNow(),
+//   timesSeen: integer('times_seen').default(1),
+//   rawData: jsonb('raw_data'),
+//   createdAt: timestamp('created_at').defaultNow(),
+// }, (table) => ({
+//   // Standard indexes
+//   sourceIdIdx: uniqueIndex('idx_closures_source_id').on(table.sourceId),
+//   districtIdx: index('idx_closures_district').on(table.district),
+//   routeIdx: index('idx_closures_route').on(table.route),
+//   statusIdx: index('idx_closures_status').on(table.status),
+//   startTimestampIdx: index('idx_closures_start_timestamp').on(table.startTimestamp),
+//   lastSeenIdx: index('idx_closures_last_seen').on(table.lastSeen),
+//   countyIdx: index('idx_closures_county').on(table.county),
+//   // Composite indexes
+//   activeClosuresIdx: index('idx_closures_active').on(table.status, table.lastSeen).where(sql`${table.status} = 'active'`),
+//   dateRangeIdx: index('idx_closures_dates').on(table.startDate, table.endDate),
+// }));
+
+// // API request logs table
+// export const apiRequestLogs = pgTable('api_request_logs', {
+//   logId: serial('log_id').primaryKey(),
+//   endpoint: varchar('endpoint', { length: 255 }),
+//   district: integer('district'),
+//   requestTimestamp: timestamp('request_timestamp').defaultNow(),
+//   responseTimeMs: integer('response_time_ms'),
+//   statusCode: integer('status_code'),
+//   success: boolean('success'),
+//   recordsFetched: integer('records_fetched').default(0),
+//   errorMessage: text('error_message'),
+//   responseSizeBytes: integer('response_size_bytes'),
+// }, (table) => ({
+//   timestampIdx: index('idx_api_logs_timestamp').on(table.requestTimestamp),
+//   successIdx: index('idx_api_logs_success').on(table.success),
+// }));
+
+// Snapshots table for analytics
+export const laneClosuresSnapshots = pgTable('lane_closures_snapshots', {
+  snapshotId: serial('snapshot_id').primaryKey(),
+  snapshotTimestamp: timestamp('snapshot_timestamp').defaultNow(),
+  district: integer('district'),
+  totalClosures: integer('total_closures'),
+  closuresByType: jsonb('closures_by_type'),
+  closuresByRoute: jsonb('closures_by_route'),
+  rawSummary: jsonb('raw_summary'),
+}, (table) => ({
+  timestampIdx: index('idx_snapshots_timestamp').on(table.snapshotTimestamp),
+  districtIdx: index('idx_snapshots_district').on(table.district),
+}));
+
+// Define relationships
+export const laneClosuresRelations = relations(laneClosures, ({ one }) => ({
+  district: one(caltransDistricts, {
+    fields: [laneClosures.district],
+    references: [caltransDistricts.districtId],
+  }),
+}));
+
+export const caltransDistrictsRelations = relations(caltransDistricts, ({ many }) => ({
+  closures: many(laneClosures),
+}));
+
+// Types for use in the application
+export type LaneClosure = typeof laneClosures.$inferSelect;
+export type NewLaneClosure = typeof laneClosures.$inferInsert;
+export type ApiRequestLog = typeof apiRequestLogs.$inferSelect;
+export type NewApiRequestLog = typeof apiRequestLogs.$inferInsert;
+export type CaltransDistrict = typeof caltransDistricts.$inferSelect;
+
+
+
+// // db/schema.ts (Add this table)
+// export const chpCollisions = pgTable('chp_collisions', {
+//   id: serial('id').primaryKey(),
+//   caseId: varchar('case_id', { length: 50 }).unique(),
+//   collisionDate: timestamp('collision_date', { mode: 'date' }),
+//   collisionYear: integer('collision_year'),
+//   severity: varchar('severity', { length: 50 }),
+//   county: varchar('county', { length: 100 }),
+//   city: varchar('city', { length: 100 }),
+//   location: text('location'),
+//   latitude: numeric('latitude', { precision: 10, scale: 7 }).$type<number>(),
+//   longitude: numeric('longitude', { precision: 10, scale: 7 }).$type<number>(),
+//   primaryFactor: text('primary_factor'),
+//   weather: varchar('weather', { length: 50 }),
+//   lighting: varchar('lighting', { length: 50 }),
+//   injuries: integer('injuries').default(0),
+//   fatalities: integer('fatalities').default(0),
+//   rawData: jsonb('raw_data'),
+//   fetchedAt: timestamp('fetched_at').defaultNow(),
+//   lastSeen: timestamp('last_seen').defaultNow(),
+//   updatedAt: timestamp('updated_at').defaultNow(),
+// }, (table) => ({
+//   countyIdx: index('idx_chp_county').on(table.county),
+//   severityIdx: index('idx_chp_severity').on(table.severity),
+//   yearIdx: index('idx_chp_year').on(table.collisionYear),
+//   dateIdx: index('idx_chp_date').on(table.collisionDate),
+// }));
+
+
+// // src/lib/schema.ts - Add this table
+// export const chpCadIncidents = pgTable('chp_cad_incidents', {
+//   id: serial('id').primaryKey(),
+//   sourceId: varchar('source_id', { length: 100 }).unique(),
+//   incidentType: varchar('incident_type', { length: 100 }),
+//   location: text('location'),
+//   city: varchar('city', { length: 100 }),
+//   county: varchar('county', { length: 100 }),
+//   logTime: timestamp('log_time'),
+//   details: text('details'),
+//   latitude: numeric('latitude', { precision: 10, scale: 7 }).$type<number>(),
+//   longitude: numeric('longitude', { precision: 10, scale: 7 }).$type<number>(),
+//   status: varchar('status', { length: 20 }).default('active'),
+//   fetchedAt: timestamp('fetched_at').defaultNow(),
+//   createdAt: timestamp('created_at').defaultNow(),
+// }, (table) => ({
+//   countyIdx: index('idx_chp_cad_county').on(table.county),
+//   typeIdx: index('idx_chp_cad_type').on(table.incidentType),
+//   statusIdx: index('idx_chp_cad_status').on(table.status),
+//   timeIdx: index('idx_chp_cad_time').on(table.logTime),
+// }));
+
+
+
+// 511.org
+
+// // src/lib/schema.ts
+// export const bayAreaTrafficEvents = pgTable('bay_area_traffic_events', {
+//   id: serial('id').primaryKey(),
+//   sourceId: varchar('source_id', { length: 100 }).unique(),
+//   jurisdiction: varchar('jurisdiction', { length: 50 }).default('SF Bay Area'),
+//   eventType: varchar('event_type', { length: 100 }),
+//   eventSubType: varchar('event_sub_type', { length: 100 }),
+//   severity: varchar('severity', { length: 50 }),
+//   status: varchar('status', { length: 20 }).default('active'),
+//   title: text('title'),
+//   description: text('description'),
+//   roadwayName: varchar('roadway_name', { length: 100 }),
+//   directionOfTravel: varchar('direction_of_travel', { length: 50 }),
+//   lanesAffected: text('lanes_affected'),
+//   isFullClosure: boolean('is_full_closure'),
+//   latitude: numeric('latitude', { precision: 10, scale: 7 }).$type<number>(),
+//   longitude: numeric('longitude', { precision: 10, scale: 7 }).$type<number>(),
+//   startTime: timestamp('start_time'),
+//   endTime: timestamp('end_time'),
+//   lastUpdated: timestamp('last_updated'),
+//   rawData: jsonb('raw_data'),
+//   fetchedAt: timestamp('fetched_at').defaultNow(),
+//   createdAt: timestamp('created_at').defaultNow(),
+// }, (table) => ({
+//   typeIdx: index('idx_bay_area_type').on(table.eventType),
+//   statusIdx: index('idx_bay_area_status').on(table.status),
+//   routeIdx: index('idx_bay_area_route').on(table.roadwayName),
+//   timeIdx: index('idx_bay_area_time').on(table.startTime),
+// }));

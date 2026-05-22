@@ -162,6 +162,16 @@ CREATE TABLE "lane_closures" (
 	CONSTRAINT "lane_closures_source_id_unique" UNIQUE("source_id")
 );
 --> statement-breakpoint
+CREATE TABLE "lane_closures_snapshots" (
+	"snapshot_id" serial PRIMARY KEY NOT NULL,
+	"snapshot_timestamp" timestamp DEFAULT now(),
+	"district" integer,
+	"total_closures" integer,
+	"closures_by_type" jsonb,
+	"closures_by_route" jsonb,
+	"raw_summary" jsonb
+);
+--> statement-breakpoint
 CREATE TABLE "session" (
 	"id" text PRIMARY KEY NOT NULL,
 	"expires_at" timestamp NOT NULL,
@@ -195,7 +205,7 @@ CREATE TABLE "verification" (
 );
 --> statement-breakpoint
 ALTER TABLE "account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "chp_cad_incidents" ADD CONSTRAINT "chp_cad_incidents_center_id_chp_cad_centers_id_fk" FOREIGN KEY ("center_id") REFERENCES "public"."chp_cad_centers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chp_cad_incidents" ADD CONSTRAINT "chp_cad_incidents_center_id_chp_cad_centers_id_fk" FOREIGN KEY ("center_id") REFERENCES "public"."chp_cad_centers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "session" ADD CONSTRAINT "session_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "account_userId_idx" ON "account" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "idx_api_logs_timestamp" ON "api_request_logs" USING btree ("request_timestamp");--> statement-breakpoint
@@ -210,7 +220,6 @@ CREATE INDEX "idx_chp_cad_centers_county" ON "chp_cad_centers" USING btree ("cou
 CREATE UNIQUE INDEX "idx_chp_cad_source_id" ON "chp_cad_incidents" USING btree ("source_id");--> statement-breakpoint
 CREATE INDEX "idx_chp_cad_center_id" ON "chp_cad_incidents" USING btree ("center_id");--> statement-breakpoint
 CREATE INDEX "idx_chp_cad_county" ON "chp_cad_incidents" USING btree ("county");--> statement-breakpoint
-CREATE INDEX "idx_chp_cad_type" ON "chp_cad_incidents" USING btree ("incident_type");--> statement-breakpoint
 CREATE INDEX "idx_chp_cad_log_time" ON "chp_cad_incidents" USING btree ("log_time");--> statement-breakpoint
 CREATE UNIQUE INDEX "idx_chp_case_id" ON "chp_collisions" USING btree ("case_id");--> statement-breakpoint
 CREATE INDEX "idx_chp_county" ON "chp_collisions" USING btree ("county");--> statement-breakpoint
@@ -223,5 +232,7 @@ CREATE INDEX "idx_closures_route" ON "lane_closures" USING btree ("route");--> s
 CREATE INDEX "idx_closures_status" ON "lane_closures" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "idx_closures_last_seen" ON "lane_closures" USING btree ("last_seen");--> statement-breakpoint
 CREATE INDEX "idx_closures_dates" ON "lane_closures" USING btree ("start_date","end_date");--> statement-breakpoint
+CREATE INDEX "idx_snapshots_timestamp" ON "lane_closures_snapshots" USING btree ("snapshot_timestamp");--> statement-breakpoint
+CREATE INDEX "idx_snapshots_district" ON "lane_closures_snapshots" USING btree ("district");--> statement-breakpoint
 CREATE INDEX "session_userId_idx" ON "session" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "verification_identifier_idx" ON "verification" USING btree ("identifier");

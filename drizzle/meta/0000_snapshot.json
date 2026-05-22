@@ -1,5 +1,5 @@
 {
-  "id": "7af05938-a893-4d17-aec5-704e2a81b685",
+  "id": "42e2de61-bc5f-436b-ba66-644cc79d6edc",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -838,21 +838,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_chp_cad_type": {
-          "name": "idx_chp_cad_type",
-          "columns": [
-            {
-              "expression": "incident_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_chp_cad_log_time": {
           "name": "idx_chp_cad_log_time",
           "columns": [
@@ -880,7 +865,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -1408,6 +1393,93 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.lane_closures_snapshots": {
+      "name": "lane_closures_snapshots",
+      "schema": "",
+      "columns": {
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "snapshot_timestamp": {
+          "name": "snapshot_timestamp",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "district": {
+          "name": "district",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_closures": {
+          "name": "total_closures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closures_by_type": {
+          "name": "closures_by_type",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closures_by_route": {
+          "name": "closures_by_route",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "raw_summary": {
+          "name": "raw_summary",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_snapshots_timestamp": {
+          "name": "idx_snapshots_timestamp",
+          "columns": [
+            {
+              "expression": "snapshot_timestamp",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_snapshots_district": {
+          "name": "idx_snapshots_district",
+          "columns": [
+            {
+              "expression": "district",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

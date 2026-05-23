@@ -9,6 +9,8 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { Activity, Sun, Moon, MapPin, AlertTriangle, BarChart3, Radio } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
+export const dynamic = 'force-dynamic';
+
 const tabs = [
   { path: '/dashboard', name: 'Overview', icon: AlertTriangle },
   { path: '/dashboard/511org', name: 'Bay Area 511', icon: Radio },

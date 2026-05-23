@@ -3,11 +3,13 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
+import dynamicImport from 'next/dynamic';
 import { RefreshCw, Filter, X, Car, Radio, AlertTriangle, Calendar, MapPin, Download, Calendar as CalendarIcon, ChevronDown } from 'lucide-react';
 
+export const dynamic = 'force-dynamic';  // Add this line
+
 // Use the same map component that works in 511org
-const SimpleMap = dynamic(() => import('@/components/map/simpleMap'), {
+const SimpleMap = dynamicImport(() => import('@/components/map/simpleMap'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-[600px] rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">

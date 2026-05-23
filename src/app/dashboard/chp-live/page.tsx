@@ -2,9 +2,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import dynamic from 'next/dynamic';
+import dynamicImport from 'next/dynamic';
 
-const CHPLiveContent = dynamic(
+export const dynamic = 'force-dynamic';  // Add this line
+
+const CHPLiveContent = dynamicImport(
   () => import('./chpLiveContent'),
   { ssr: false, loading: () => <div className="p-12 text-center">Loading...</div> }
 );

@@ -2,9 +2,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import dynamic from 'next/dynamic';
+import dynamicImport from 'next/dynamic';
 
-const BayArea511Content = dynamic(() => import('./511orgContent'), {
+export const dynamic = 'force-dynamic';  // Add this line
+
+const BayArea511Content = dynamicImport(() => import('./511orgContent'), {
   ssr: false,
   loading: () => (
     <div className="flex justify-center items-center h-96">

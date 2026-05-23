@@ -31,14 +31,15 @@
 - **Upsert logic:** By `source_id`, marks stale after 15 min
 
 ## 📊 CHP CAD Live Poller
-- **Source:** `https://cad.chp.ca.gov/Traffic.aspx`
+- **Endpoint:** `https://cad.chp.ca.gov/Traffic.aspx`
 - **Format:** HTML, requires scraping using Cheerio logic (mostly working)
 - **Communication Centers:** Saved in database, related to CHP CAD Events
 - **Focus:** Ukiah, Humboldt, but support all other CHP CAD CenterCodes
 
 ## 📊 CHP Historical Poller
-- **Source:** `data.ca.gov/api/3/action/datastore_search`
+- **Endpoint:** `data.ca.gov/api/3/action/datastore_search`
 - **Resource ID:** `b8ce0ca4-b4e9-490d-b4d1-1f4ec48cbefb`
+- **Format:** JSON, no auth
 - **CKAN limitation:** No date operators in filters → client-side filtering
 - **Batch import:** Paginates 100 records at a time
 

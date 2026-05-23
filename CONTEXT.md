@@ -64,5 +64,7 @@
 ## 🔧 Common Commands
 ```bash
 bun db:generate && bun db:push && bun dev
-curl "http://localhost:3000/api/chp-historical/poll?action=poll&limit=5000"
-curl "http://localhost:3000/api/caltrans/poll"
+curl "http://localhost:3000/api/bay-area-511/poll?action=poll&limit=100"
+curl "http://localhost:3000/api/chp-cad/poll?action=poll&limit=100"
+curl "http://localhost:3000/api/chp-historical/poll?action=poll&limit=500"
+curl "http://localhost:3000/api/caltrans/poll?action=poll&limit=500"

@@ -10,6 +10,7 @@ import { Activity, Sun, Moon, MapPin, AlertTriangle, BarChart3, Radio } from 'lu
 import { Button } from '@/components/ui/button';
 
 const tabs = [
+  { path: '/dashboard', name: 'Overview', icon: AlertTriangle },
   { path: '/dashboard/511org', name: 'Bay Area 511', icon: Radio },
   { path: '/dashboard/caltrans', name: 'Caltrans', icon: MapPin },
   { path: '/dashboard/chp-live', name: 'CHP Live', icon: AlertTriangle },

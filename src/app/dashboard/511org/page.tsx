@@ -4,11 +4,14 @@
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 
-// Dynamically import the content component with no SSR
-const Content = dynamic(
-  () => import('./511orgContent'),
-  { ssr: false, loading: () => <div className="p-12 text-center">Loading Bay Area 511 data...</div> }
-);
+const BayArea511Content = dynamic(() => import('./511orgContent'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex justify-center items-center h-96">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+    </div>
+  ),
+});
 
 export default function BayArea511Page() {
   const [mounted, setMounted] = useState(false);
@@ -18,8 +21,12 @@ export default function BayArea511Page() {
   }, []);
 
   if (!mounted) {
-    return <div className="p-12 text-center">Loading...</div>;
+    return (
+      <div className="flex justify-center items-center h-96">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+      </div>
+    );
   }
 
-  return <Content />;
+  return <BayArea511Content />;
 }

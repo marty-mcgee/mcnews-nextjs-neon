@@ -3849,3 +3849,171 @@ Document generated on: May 23, 2026
 ### Database Schema
 See `laneClosures` table in Drizzle schema.
 
+# Project Context – mcnews-nextjs-neon
+
+This file captures decisions, architecture, and working code for the CHP/Caltrans data pipeline.
+
+---
+
+## 🧱 Tech Stack
+
+- **Framework:** Next.js (App Router), TypeScript, React
+- **Database:** Neon Postgres + Drizzle ORM
+- **UI:** shadcn/ui, Tailwind, Leaflet
+- **Data Sources (Official JSON APIs):**
+  - **Caltrans CWWP2** – Real-time lane closures (JSON, no auth)
+  - **CHP CKAN** – Historical collision records (JSON, no auth)
+  - **Bay Area 511** – Real-time incidents (API key)
+  - ~~CHP CAD HTML scraping~~ → **REJECTED** (no JSON API, HTML only)
+
+---
+
+## 📁 Service Files (src/lib/services/)
+
+| File | Purpose | Status |
+|------|---------|--------|
+| `CHPPoller.ts` | Historical collisions from CKAN | ✅ Working |
+| `CaltransPoller.ts` | Real-time lane closures from CWWP2 | ✅ Implemented |
+| `BayArea511Poller.ts` | Real-time incidents from 511.org | ✅ Working |
+| `CHPCADPoller.ts` | Live CAD feed | ⚠️ HTML scraping (not recommended) |
+| `CCTVPoller.ts` | Caltrans camera feeds | ✅ Working |
+| `TravelTimesPoller.ts` | Travel time data | ✅ Working |
+
+---
+
+## 🚦 Caltrans CWWP2 Poller (Real-time Lane Closures)
+
+**Source:** `https://cwwp2.dot.ca.gov/data/d{1-12}/lcs/lcsStatusDXX.json`  
+**Format:** JSON (official, no authentication)  
+**Update frequency:** Every 5 minutes (data refreshes)  
+**Polling interval:** Configurable (default 5 min)
+
+### Features
+- Polls all 12 Caltrans districts sequentially
+- Upserts closures by unique `source_id`
+- Marks closures as `completed` if not seen for 15 minutes
+- Stores raw JSON in `raw_data` column
+- API logging for monitoring
+
+### API Endpoints
+
+GET /api/caltrans/poll - Trigger immediate poll
+GET /api/caltrans/cron/poll - For scheduled polling
+GET /api/caltrans/closures - Query closures (supports district, route, status)
+GET /api/caltrans/closures/stats - Get polling statistics
+GET /api/caltrans/closures/export - Export to CSV/JSON
+text
+
+
+### Database Table: `lane_closures`
+```typescript
+{
+  id, sourceId, district, route, direction, closureType,
+  startTimestamp, endTimestamp, description,
+  latitude, longitude, county, city,
+  status ('active'|'completed'), timesSeen,
+  firstSeen, lastSeen, rawData
+}
+
+📊 CHP Historical Poller (Working)
+
+Source: data.ca.gov/api/3/action/datastore_search
+Resource ID: b8ce0ca4-b4e9-490d-b4d1-1f4ec48cbefb
+Format: JSON (CKAN API, no auth)
+Data: Historical collision records (not real-time)
+Key Implementation Details
+
+    Pagination: Fetches 100 records at a time, loops until limit reached
+
+    Date filtering: Client-side by Crash Date Time (CKAN doesn't support date operators in filters)
+
+    Year filtering: Can filter for specific year (e.g., 2026 only)
+
+    Duplicate detection: Checks caseId (Report Number) before insert
+
+    Batch imports: Supports limit parameter (up to 5000+ records)
+
+API Endpoints
+text
+
+GET /api/chp-historical/poll?action=poll&limit=5000   - Import records
+GET /api/chp-historical/poll?action=status           - Check import status
+GET /api/chp-historical/collisions?limit=10          - Query imported data
+GET /api/chp-historical/collisions/stats             - Get statistics
+
+Database Table: chp_collisions
+typescript
+
+{
+  id, caseId, collisionDate, collisionYear, severity,
+  city, location, latitude, longitude,
+  primaryFactor, weather, lighting,
+  injuries, fatalities, rawData, fetchedAt
+}
+
+🗺️ Bay Area 511 Poller
+
+Source: http://api.511.org/traffic/events
+Format: JSON (requires free API token)
+Coverage: San Francisco Bay Area only
+API Endpoints
+text
+
+GET /api/bay-area-511/poll     - Trigger poll
+GET /api/bay-area-511/seed     - Seed initial data
+GET /api/bay-area-511/debug    - Debug endpoint
+
+⚠️ Critical Decisions (From Development Chats)
+
+    NO HTML scraping – The live CHP CAD page (cad.chp.ca.gov/Traffic.aspx) returns HTML, not JSON. We use official APIs instead.
+
+    CKAN date filtering limitation – The CKAN API does NOT support >=, <=, or BETWEEN operators in filters. Solution: fetch records and filter client-side.
+
+    All pollers use Drizzle ORM – No raw SQL or pg pool. Neon handles the connection.
+
+    Vercel serverless functions – Can run up to 300 seconds (maxDuration = 300), suitable for batch imports.
+
+    Batch imports for large datasets – For 120k+ records, import in chunks by date range or use limit.
+
+🔧 Common Commands
+bash
+
+# Generate and run Drizzle migrations
+npm run db:generate
+npm run db:migrate
+
+# Import CHP historical data (5000 records)
+curl "http://localhost:3000/api/chp-historical/poll?action=poll&limit=5000"
+
+# Check import status
+curl "http://localhost:3000/api/chp-historical/poll?action=status"
+
+# Trigger Caltrans real-time poll
+curl "http://localhost:3000/api/caltrans/poll"
+
+# Query lane closures
+curl "http://localhost:3000/api/caltrans/closures?district=7&status=active"
+
+📝 How to Update This File
+
+After any major decision in a chat, ask the AI:
+"Please update CONTEXT.md to include [decision X]"
+
+Then copy/paste the updated section into this file and commit to GitHub.
+text
+
+
+---
+
+## 🚀 Next steps
+
+1. **Copy the complete CONTEXT.md above** and replace your current file on GitHub
+2. **Commit and push**:
+   ```bash
+   git add CONTEXT.md
+   git commit -m "docs: complete CONTEXT.md with all API decisions and working pollers"
+   git push origin main
+
+    In future chats, just say: "Read CONTEXT.md from my repo, then help me with [task]"
+
+Would you like me to help you verify that your CaltransPoller.ts matches the implementation in this CONTEXT.md, or help you add any missing pieces (like the lane_closures Drizzle schema)?

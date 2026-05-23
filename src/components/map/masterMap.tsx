@@ -6,7 +6,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// Fix marker icons
+// Fix for default marker icons
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -14,38 +14,43 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-function MapBoundsUpdater({ events }: { events: any[] }) {
+// Map bounds updater component
+function MapBoundsUpdater({ events }: { events: MasterMapEvent[] }) {
   const map = useMap();
   
   useEffect(() => {
     if (events.length === 0) return;
-    const validEvents = events.filter(e => e.latitude && e.longitude);
-    if (validEvents.length === 0) return;
-    const bounds = L.latLngBounds(validEvents.map(e => [e.latitude, e.longitude]));
+    
+    const eventsWithCoords = events.filter(e => e.latitude && e.longitude);
+    if (eventsWithCoords.length === 0) return;
+    
+    const bounds = L.latLngBounds(eventsWithCoords.map(e => [e.latitude, e.longitude]));
     map.fitBounds(bounds, { padding: [50, 50] });
   }, [events, map]);
   
   return null;
 }
 
-interface MapEvent {
+export interface MasterMapEvent {
   id: number;
-  source: string;
+  source: 'caltrans' | 'bayarea511' | 'chp-live' | 'chp-historical';
   type: string;
-  location: string;
-  description: string;
-  latitude: number;
-  longitude: number;
-  timestamp?: string;
   severity?: string;
+  location: string;
+  city?: string;
+  county?: string;
+  description?: string;
+  latitude: number | string;
+  longitude: number | string;
+  timestamp?: string;
 }
 
 interface MasterMapProps {
-  events: MapEvent[];
+  events: MasterMapEvent[];
   center?: [number, number];
   zoom?: number;
   height?: string;
-  onMarkerClick?: (event: MapEvent) => void;
+  onEventClick?: (event: MasterMapEvent) => void;
 }
 
 const getSourceColor = (source: string) => {
@@ -78,7 +83,7 @@ const getSourceIcon = (source: string) => {
   }
 };
 
-export default function MasterMap({ events, center = [39.3, -123.5], zoom = 9, height = '500px', onMarkerClick }: MasterMapProps) {
+export default function MasterMap({ events, center = [39.3, -123.5], zoom = 9, height = '500px', onEventClick }: MasterMapProps) {
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
@@ -87,19 +92,20 @@ export default function MasterMap({ events, center = [39.3, -123.5], zoom = 9, h
 
   if (!isClient) {
     return (
-      <div className={`w-full h-[${height}] rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center`}>
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className={`w-full h-[${height}] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center`}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <p className="text-gray-500">Loading map...</p>
+        </div>
       </div>
     );
   }
 
-  const validEvents = events.filter(e => e.latitude && e.longitude && !isNaN(e.latitude) && !isNaN(e.longitude));
-
-  const handleMarkerClick = (event: MapEvent) => {
-    if (onMarkerClick) {
-      onMarkerClick(event);
-    }
-  };
+  const eventsWithCoords = events.filter(e => {
+    const lat = typeof e.latitude === 'string' ? parseFloat(e.latitude) : e.latitude;
+    const lng = typeof e.longitude === 'string' ? parseFloat(e.longitude) : e.longitude;
+    return lat && lng && !isNaN(lat) && !isNaN(lng);
+  });
 
   return (
     <MapContainer
@@ -108,9 +114,14 @@ export default function MasterMap({ events, center = [39.3, -123.5], zoom = 9, h
       style={{ height, width: '100%', borderRadius: '0.75rem', zIndex: 1 }}
       className="rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm"
     >
-      <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+      <TileLayer
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+      />
       
-      {validEvents.map((event) => {
+      {eventsWithCoords.map((event) => {
+        const lat = typeof event.latitude === 'string' ? parseFloat(event.latitude) : event.latitude;
+        const lng = typeof event.longitude === 'string' ? parseFloat(event.longitude) : event.longitude;
         const sourceColor = getSourceColor(event.source);
         
         const customIcon = L.divIcon({
@@ -123,12 +134,9 @@ export default function MasterMap({ events, center = [39.3, -123.5], zoom = 9, h
             align-items: center;
             justify-content: center;
             font-size: 14px;
-            font-weight: bold;
-            color: white;
             border: 2px solid white;
             box-shadow: 0 0 4px rgba(0,0,0,0.3);
             cursor: pointer;
-            transition: transform 0.2s;
           ">${getSourceIcon(event.source)}</div>`,
           iconSize: [32, 32],
           popupAnchor: [0, -16],
@@ -136,50 +144,46 @@ export default function MasterMap({ events, center = [39.3, -123.5], zoom = 9, h
         });
 
         return (
-          <Marker 
-            key={`${event.source}-${event.id}`} 
-            position={[event.latitude, event.longitude]} 
+          <Marker
+            key={`${event.source}-${event.id}`}
+            position={[lat, lng]}
             icon={customIcon}
             eventHandlers={{
-              click: () => handleMarkerClick(event),
+              click: () => onEventClick?.(event),
             }}
           >
             <Popup>
-              <div style={{ minWidth: '220px', maxWidth: '320px' }}>
+              <div style={{ minWidth: '220px', maxWidth: '320px', fontFamily: 'system-ui' }}>
                 <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-200">
-                  <div className={`w-2 h-2 rounded-full`} style={{ backgroundColor: sourceColor }} />
-                  <span className="text-xs font-semibold uppercase tracking-wide">{getSourceName(event.source)}</span>
+                  <div className={`w-3 h-3 rounded-full`} style={{ backgroundColor: sourceColor }} />
+                  <span className="text-xs font-semibold uppercase">{getSourceName(event.source)}</span>
                 </div>
-                <div className="font-bold text-sm mb-1">{event.type}</div>
-                <div className="text-xs text-gray-600 mb-2">📍 {event.location}</div>
-                <div className="text-xs text-gray-500 mb-2">{event.description?.substring(0, 100)}</div>
+                <h3 className="font-bold text-sm mb-1">{event.type || 'Event'}</h3>
+                <p className="text-xs text-gray-600 mb-2">{event.location}</p>
+                {event.description && (
+                  <p className="text-xs text-gray-500 mb-2">{event.description.substring(0, 120)}</p>
+                )}
+                {event.city && <p className="text-xs text-gray-400">📍 City: {event.city}</p>}
+                {event.county && <p className="text-xs text-gray-400">📍 County: {event.county}</p>}
                 {event.timestamp && (
-                  <div className="text-xs text-gray-400">🕐 {new Date(event.timestamp).toLocaleString()}</div>
+                  <p className="text-xs text-gray-400 mt-1">🕐 {new Date(event.timestamp).toLocaleString()}</p>
                 )}
                 {event.severity && (
-                  <div className={`mt-2 inline-block px-2 py-0.5 text-xs rounded-full ${
-                    event.severity === 'Fatal' || event.severity === 'Major' ? 'bg-red-100 text-red-700' :
+                  <span className={`inline-block mt-2 px-2 py-0.5 text-xs rounded-full ${
+                    event.severity === 'Fatal' || event.severity === 'Major' ? 'bg-red-100 text-red-700' : 
                     event.severity === 'Injury' ? 'bg-orange-100 text-orange-700' :
                     'bg-yellow-100 text-yellow-700'
                   }`}>
                     {event.severity}
-                  </div>
+                  </span>
                 )}
-                <div className="mt-2 pt-2 border-t border-gray-100">
-                  <button
-                    onClick={() => handleMarkerClick(event)}
-                    className="w-full text-center text-xs text-blue-600 hover:text-blue-700"
-                  >
-                    View all {getSourceName(event.source)} events →
-                  </button>
-                </div>
               </div>
             </Popup>
           </Marker>
         );
       })}
       
-      <MapBoundsUpdater events={validEvents} />
+      <MapBoundsUpdater events={eventsWithCoords} />
     </MapContainer>
   );
 }

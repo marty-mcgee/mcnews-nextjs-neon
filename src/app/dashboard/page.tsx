@@ -191,9 +191,15 @@ export default function DashboardPage() {
     applyFilters();
   }, [applyFilters]);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
+    console.log('Refresh button clicked');
     setRefreshing(true);
-    fetchAllData();
+    await fetchAllData();
+    console.log('Fetch completed, allEvents length:', allEvents.length);
+    // Force filter re-application
+    applyFilters();
+    console.log('Refreshing complete');
+    setRefreshing(false);
   };
 
   const getSourceCount = (source: string) => {

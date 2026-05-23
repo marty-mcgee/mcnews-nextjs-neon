@@ -4025,6 +4025,7 @@ Would you like me to help you verify that your CaltransPoller.ts matches the imp
 # Project Context – mcnews-nextjs-neon
 
 **Timestamp: May 23, 2026 @ 02:20pm PST**  
+
 *This file captures decisions, architecture, and working code for the CHP/Caltrans data pipeline.*
 
 ---
@@ -4191,3 +4192,5 @@ text
     In future chats, just say: "Read CONTEXT.md from my repo, then help me with [task]"
 
 Would you like me to help you verify that your CaltransPoller.ts matches the implementation in this CONTEXT.md, or help you add any missing pieces (like the lane_closures Drizzle schema)?
+
+**Timestamp: May 23, 2026 @ 02:23pm PST**

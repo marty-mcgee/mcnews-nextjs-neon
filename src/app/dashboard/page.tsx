@@ -1,9 +1,10 @@
 // src/app/dashboard/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { RefreshCw, Filter, X, Car, Radio, AlertTriangle, Calendar, MapPin } from 'lucide-react';
+import { RefreshCw, Filter, X, Car, Radio, AlertTriangle, Calendar, MapPin, Download, Calendar as CalendarIcon, ChevronDown } from 'lucide-react';
 
 // Use the same map component that works in 511org
 const SimpleMap = dynamic(() => import('@/components/map/simpleMap'), {
@@ -16,6 +17,7 @@ const SimpleMap = dynamic(() => import('@/components/map/simpleMap'), {
 });
 
 type SourceFilter = 'all' | 'caltrans' | 'bayarea511' | 'chp-live' | 'chp-historical';
+type DateRange = '1d' | '7d' | '30d' | 'all';
 
 interface MapEvent {
   id: number;
@@ -30,23 +32,26 @@ interface MapEvent {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [allEvents, setAllEvents] = useState<MapEvent[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<MapEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
+  const [dateRange, setDateRange] = useState<DateRange>('7d');
   const [showFilters, setShowFilters] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
-  // Fetch all data from your database via existing API endpoints
-  const fetchAllData = async () => {
+  // Fetch all data from your database
+  const fetchAllData = useCallback(async () => {
     try {
-      // Fetch from your existing database-backed API routes
       const [caltransRes, bayAreaRes, chpLiveRes, chpHistoricalRes] = await Promise.all([
         fetch('/api/caltrans/closures/raw'),
-        fetch('/api/bay-area-511?limit=1000'),
-        fetch('/api/chp-cad?limit=1000'),
-        fetch('/api/chp-historical/collisions?limit=1000'),
+        fetch('/api/bay-area-511?limit=2000'),
+        fetch('/api/chp-cad?limit=2000'),
+        fetch('/api/chp-historical/collisions?limit=2000'),
       ]);
       
       const caltransData = await caltransRes.json();
@@ -56,7 +61,7 @@ export default function DashboardPage() {
       
       const allEventsList: MapEvent[] = [];
       
-      // Caltrans events (from your database)
+      // Caltrans events
       (caltransData.data || []).forEach((item: any) => {
         if (item.latitude && item.longitude) {
           allEventsList.push({
@@ -73,7 +78,7 @@ export default function DashboardPage() {
         }
       });
       
-      // Bay Area 511 events (from your database)
+      // Bay Area 511 events
       (bayAreaData.data || []).forEach((item: any) => {
         if (item.latitude && item.longitude) {
           allEventsList.push({
@@ -90,7 +95,7 @@ export default function DashboardPage() {
         }
       });
       
-      // CHP Live events (from your database)
+      // CHP Live events
       (chpLiveData.data || []).forEach((item: any) => {
         if (item.latitude && item.longitude) {
           allEventsList.push({
@@ -106,7 +111,7 @@ export default function DashboardPage() {
         }
       });
       
-      // CHP Historical events (from your database)
+      // CHP Historical events
       (chpHistoricalData.data || []).forEach((item: any) => {
         if (item.latitude && item.longitude) {
           allEventsList.push({
@@ -125,34 +130,64 @@ export default function DashboardPage() {
       
       setAllEvents(allEventsList);
       setLastUpdated(new Date());
-      
-      // Apply current filter
-      if (sourceFilter === 'all') {
-        setFilteredEvents(allEventsList);
-      } else {
-        setFilteredEvents(allEventsList.filter(e => e.source === sourceFilter));
-      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
+
+  // Apply filters
+  const applyFilters = useCallback(() => {
+    let filtered = [...allEvents];
+    
+    // Filter by source
+    if (sourceFilter !== 'all') {
+      filtered = filtered.filter(e => e.source === sourceFilter);
+    }
+    
+    // Filter by date range
+    if (dateRange !== 'all' && dateRange !== '1d' && dateRange !== '7d' && dateRange !== '30d') {
+      const now = new Date();
+      let cutoffDate: Date;
+      switch (dateRange) {
+        case '1d':
+          cutoffDate = new Date(now.setDate(now.getDate() - 1));
+          break;
+        case '7d':
+          cutoffDate = new Date(now.setDate(now.getDate() - 7));
+          break;
+        case '30d':
+          cutoffDate = new Date(now.setDate(now.getDate() - 30));
+          break;
+        default:
+          cutoffDate = new Date(0);
+      }
+      filtered = filtered.filter(e => e.timestamp ? new Date(e.timestamp) > cutoffDate : true);
+    }
+    
+    setFilteredEvents(filtered);
+  }, [allEvents, sourceFilter, dateRange]);
 
   // Initial load
   useEffect(() => {
     fetchAllData();
-  }, []);
+  }, [fetchAllData]);
 
-  // Handle filter change
+  // Auto-refresh every 60 seconds
   useEffect(() => {
-    if (sourceFilter === 'all') {
-      setFilteredEvents(allEvents);
-    } else {
-      setFilteredEvents(allEvents.filter(e => e.source === sourceFilter));
-    }
-  }, [sourceFilter, allEvents]);
+    if (!autoRefresh) return;
+    const interval = setInterval(() => {
+      fetchAllData();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, fetchAllData]);
+
+  // Apply filters when dependencies change
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -163,7 +198,62 @@ export default function DashboardPage() {
     return allEvents.filter(e => e.source === source).length;
   };
 
-  // Convert events to the format expected by SimpleMap
+  // Export to CSV
+  const exportToCSV = () => {
+    setExporting(true);
+    try {
+      const headers = ['Source', 'Type', 'Location', 'Description', 'Latitude', 'Longitude', 'Timestamp', 'Severity'];
+      const csvRows = [headers.join(',')];
+      
+      filteredEvents.forEach(event => {
+        const row = [
+          `"${event.source}"`,
+          `"${event.type.replace(/"/g, '""')}"`,
+          `"${event.location.replace(/"/g, '""')}"`,
+          `"${event.description?.replace(/"/g, '""') || ''}"`,
+          event.latitude,
+          event.longitude,
+          event.timestamp || '',
+          event.severity || '',
+        ];
+        csvRows.push(row.join(','));
+      });
+      
+      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `traffic-events-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export error:', error);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Handle marker click to navigate to service page
+  const handleMarkerClick = (event: MapEvent) => {
+    switch (event.source) {
+      case 'caltrans':
+        router.push('/dashboard/caltrans');
+        break;
+      case 'bayarea511':
+        router.push('/dashboard/bayarea511');
+        break;
+      case 'chp-live':
+        router.push('/dashboard/chp-live');
+        break;
+      case 'chp-historical':
+        router.push('/dashboard/chp-historical');
+        break;
+    }
+  };
+
+  // Convert events to map format with click handler
   const mapEvents = filteredEvents
     .filter(e => e.latitude && e.longitude)
     .map(e => ({
@@ -173,6 +263,7 @@ export default function DashboardPage() {
       roadwayName: e.location,
       eventType: `${e.source === 'caltrans' ? '🚧' : e.source === 'bayarea511' ? '🚗' : e.source === 'chp-live' ? '🚨' : '📊'} ${e.type}`,
       description: e.description,
+      onClick: () => handleMarkerClick(e),
     }));
 
   if (loading) {
@@ -183,6 +274,9 @@ export default function DashboardPage() {
     );
   }
 
+  const totalEvents = filteredEvents.length;
+  const totalAllEvents = allEvents.length;
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -190,25 +284,51 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Traffic Map</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            {filteredEvents.length} events on map from your database
-            {sourceFilter !== 'all' && ` (filtered from ${allEvents.length} total)`}
+            {totalEvents} events on map
+            {sourceFilter !== 'all' && ` (filtered from ${totalAllEvents} total)`}
+            {lastUpdated && ` • Updated ${lastUpdated.toLocaleTimeString()}`}
           </p>
         </div>
         
         <div className="flex items-center gap-2">
+          {/* Auto-refresh Toggle */}
+          <button
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className={`px-3 py-1.5 text-sm rounded-lg transition-colors flex items-center gap-1.5 ${
+              autoRefresh 
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+            }`}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${autoRefresh ? 'animate-pulse' : ''}`} />
+            Auto {autoRefresh ? 'ON' : 'OFF'}
+          </button>
+          
+          {/* Export Button */}
+          <button
+            onClick={exportToCSV}
+            disabled={exporting || filteredEvents.length === 0}
+            className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+          >
+            <Download className="w-3.5 h-3.5" />
+            {exporting ? 'Exporting...' : 'Export CSV'}
+          </button>
+          
           {/* Filter Button */}
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`px-3 py-1.5 text-sm rounded-lg transition-colors flex items-center gap-1.5 ${
-              sourceFilter !== 'all'
+              sourceFilter !== 'all' || dateRange !== '7d'
                 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                 : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
             }`}
           >
             <Filter className="w-3.5 h-3.5" />
             Filter
-            {sourceFilter !== 'all' && (
-              <span className="ml-1 w-4 h-4 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center">1</span>
+            {(sourceFilter !== 'all' || dateRange !== '7d') && (
+              <span className="ml-1 w-4 h-4 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center">
+                {(sourceFilter !== 'all' ? 1 : 0) + (dateRange !== '7d' ? 1 : 0)}
+              </span>
             )}
           </button>
           
@@ -228,78 +348,138 @@ export default function DashboardPage() {
       {showFilters && (
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
           <div className="flex justify-between items-center mb-3">
-            <h3 className="font-semibold text-gray-900 dark:text-white">Filter by Source</h3>
+            <h3 className="font-semibold text-gray-900 dark:text-white">Filters</h3>
             <button onClick={() => setShowFilters(false)} className="text-gray-400 hover:text-gray-600">
               <X className="w-4 h-4" />
             </button>
           </div>
           
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            <button
-              onClick={() => setSourceFilter('all')}
-              className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                sourceFilter === 'all'
-                  ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              <MapPin className="w-4 h-4" />
-              All ({allEvents.length})
-            </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Source Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Data Source
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                <button
+                  onClick={() => setSourceFilter('all')}
+                  className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
+                    sourceFilter === 'all'
+                      ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
+                  }`}
+                >
+                  <MapPin className="w-4 h-4" />
+                  All ({totalAllEvents})
+                </button>
+                
+                <button
+                  onClick={() => setSourceFilter('caltrans')}
+                  className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
+                    sourceFilter === 'caltrans'
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
+                  }`}
+                >
+                  <Car className="w-4 h-4" />
+                  Caltrans ({getSourceCount('caltrans')})
+                </button>
+                
+                <button
+                  onClick={() => setSourceFilter('bayarea511')}
+                  className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
+                    sourceFilter === 'bayarea511'
+                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
+                  }`}
+                >
+                  <Radio className="w-4 h-4" />
+                  511.org ({getSourceCount('bayarea511')})
+                </button>
+                
+                <button
+                  onClick={() => setSourceFilter('chp-live')}
+                  className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
+                    sourceFilter === 'chp-live'
+                      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
+                  }`}
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                  CHP Live ({getSourceCount('chp-live')})
+                </button>
+                
+                <button
+                  onClick={() => setSourceFilter('chp-historical')}
+                  className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
+                    sourceFilter === 'chp-historical'
+                      ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
+                  }`}
+                >
+                  <Calendar className="w-4 h-4" />
+                  Historical ({getSourceCount('chp-historical')})
+                </button>
+              </div>
+            </div>
             
-            <button
-              onClick={() => setSourceFilter('caltrans')}
-              className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                sourceFilter === 'caltrans'
-                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              <Car className="w-4 h-4" />
-              Caltrans ({getSourceCount('caltrans')})
-            </button>
-            
-            <button
-              onClick={() => setSourceFilter('bayarea511')}
-              className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                sourceFilter === 'bayarea511'
-                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              <Radio className="w-4 h-4" />
-              511.org ({getSourceCount('bayarea511')})
-            </button>
-            
-            <button
-              onClick={() => setSourceFilter('chp-live')}
-              className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                sourceFilter === 'chp-live'
-                  ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              <AlertTriangle className="w-4 h-4" />
-              CHP Live ({getSourceCount('chp-live')})
-            </button>
-            
-            <button
-              onClick={() => setSourceFilter('chp-historical')}
-              className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                sourceFilter === 'chp-historical'
-                  ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              <Calendar className="w-4 h-4" />
-              CHP Historical ({getSourceCount('chp-historical')})
-            </button>
+            {/* Date Range Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Date Range
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setDateRange('1d')}
+                  className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                    dateRange === '1d'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200'
+                  }`}
+                >
+                  Last 24h
+                </button>
+                <button
+                  onClick={() => setDateRange('7d')}
+                  className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                    dateRange === '7d'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200'
+                  }`}
+                >
+                  Last 7 days
+                </button>
+                <button
+                  onClick={() => setDateRange('30d')}
+                  className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                    dateRange === '30d'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200'
+                  }`}
+                >
+                  Last 30 days
+                </button>
+                <button
+                  onClick={() => setDateRange('all')}
+                  className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                    dateRange === 'all'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200'
+                  }`}
+                >
+                  All time
+                </button>
+              </div>
+            </div>
           </div>
           
-          {sourceFilter !== 'all' && (
+          {(sourceFilter !== 'all' || dateRange !== '7d') && (
             <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
               <button
-                onClick={() => setSourceFilter('all')}
+                onClick={() => {
+                  setSourceFilter('all');
+                  setDateRange('7d');
+                }}
                 className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
               >
                 <X className="w-3 h-3" />
@@ -314,22 +494,22 @@ export default function DashboardPage() {
       <div className="flex flex-wrap gap-4 text-xs">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-          <span className="text-gray-600 dark:text-gray-400">Caltrans - Lane Closures</span>
+          <span className="text-gray-600 dark:text-gray-400">Caltrans - Click to view</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-          <span className="text-gray-600 dark:text-gray-400">511.org - Traffic Events</span>
+          <span className="text-gray-600 dark:text-gray-400">511.org - Click to view</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full bg-red-500"></div>
-          <span className="text-gray-600 dark:text-gray-400">CHP Live - Active Incidents</span>
+          <span className="text-gray-600 dark:text-gray-400">CHP Live - Click to view</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-          <span className="text-gray-600 dark:text-gray-400">CHP Historical - Collisions</span>
+          <span className="text-gray-600 dark:text-gray-400">CHP Historical - Click to view</span>
         </div>
         <div className="flex items-center gap-1.5 ml-auto">
-          <span className="text-gray-400">Data from your database</span>
+          <span className="text-gray-400">Click any marker to see service details</span>
         </div>
       </div>
 
@@ -337,13 +517,19 @@ export default function DashboardPage() {
       <SimpleMap 
         events={mapEvents} 
         center={[39.3, -123.5]} 
-        zoom={9} 
-        // height="600px"
+        zoom={10} 
+        height="600px"
+        onMarkerClick={(event: any) => {
+          if (event.onClick) event.onClick();
+        }}
       />
 
-      {/* Source Summary Cards */}
+      {/* Source Summary Cards - Clickable */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3">
+        <button
+          onClick={() => router.push('/dashboard/caltrans')}
+          className="bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors text-left"
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Car className="w-4 h-4 text-blue-600" />
@@ -351,9 +537,13 @@ export default function DashboardPage() {
             </div>
             <span className="text-lg font-bold text-blue-700 dark:text-blue-400">{getSourceCount('caltrans')}</span>
           </div>
-        </div>
+          <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Click to view details →</p>
+        </button>
         
-        <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-lg p-3">
+        <button
+          onClick={() => router.push('/dashboard/bayarea511')}
+          className="bg-emerald-50 dark:bg-emerald-950/20 rounded-lg p-3 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors text-left"
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Radio className="w-4 h-4 text-emerald-600" />
@@ -361,9 +551,13 @@ export default function DashboardPage() {
             </div>
             <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{getSourceCount('bayarea511')}</span>
           </div>
-        </div>
+          <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">Click to view details →</p>
+        </button>
         
-        <div className="bg-red-50 dark:bg-red-950/20 rounded-lg p-3">
+        <button
+          onClick={() => router.push('/dashboard/chp-live')}
+          className="bg-red-50 dark:bg-red-950/20 rounded-lg p-3 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-left"
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-red-600" />
@@ -371,9 +565,13 @@ export default function DashboardPage() {
             </div>
             <span className="text-lg font-bold text-red-700 dark:text-red-400">{getSourceCount('chp-live')}</span>
           </div>
-        </div>
+          <p className="text-xs text-red-600 dark:text-red-400 mt-1">Click to view details →</p>
+        </button>
         
-        <div className="bg-purple-50 dark:bg-purple-950/20 rounded-lg p-3">
+        <button
+          onClick={() => router.push('/dashboard/chp-historical')}
+          className="bg-purple-50 dark:bg-purple-950/20 rounded-lg p-3 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors text-left"
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-purple-600" />
@@ -381,7 +579,8 @@ export default function DashboardPage() {
             </div>
             <span className="text-lg font-bold text-purple-700 dark:text-purple-400">{getSourceCount('chp-historical')}</span>
           </div>
-        </div>
+          <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">Click to view details →</p>
+        </button>
       </div>
     </div>
   );

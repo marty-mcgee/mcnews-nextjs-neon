@@ -3570,3 +3570,282 @@ Specifically, I need to see:
     Any other custom methods you have
 
 Once you share your code, I'll give you the updated version that preserves all your functionality while adding the ability to import thousands of records from 2026!
+
+Here is a comprehensive summary of our work on your California Traffic Data Monitor application.
+California Traffic Data Monitor - Development Summary
+Project Overview
+
+A Next.js 14+ application that aggregates real-time and historical traffic data from multiple California sources, displaying them on interactive maps and dashboards.
+Tech Stack
+
+    Framework: Next.js 14+ (App Router)
+
+    Language: TypeScript
+
+    Database: Neon PostgreSQL with Drizzle ORM
+
+    Maps: Leaflet with React-Leaflet
+
+    Styling: Tailwind CSS
+
+    Icons: Lucide React
+
+    Deployment: Vercel
+
+Data Sources (4 Services)
+Service	Source	Type	Update Frequency
+Caltrans	CWWP2 API (lane closures)	Real-time	Every 5 minutes
+511.org	Bay Area traffic events	Real-time	Every 5 minutes
+CHP Live	CHP CAD page (scraped)	Real-time	On demand
+CHP Historical	CKAN API (collisions)	Historical	Batch import
+Key Files and Code
+1. Database Schema (src/lib/auth/schema.ts)
+
+Tables created:
+
+    lane_closures - Caltrans lane closures
+
+    bay_area_traffic_events - 511.org events
+
+    chp_cad_incidents - CHP live incidents
+
+    chp_collisions - CHP historical collisions
+
+    chp_cad_centers - CHP communication centers
+
+    api_request_logs - API monitoring
+
+2. Service Pollers (src/lib/services/)
+File	Purpose
+CaltransPoller.ts	Fetches lane closures from Caltrans API
+BayArea511Poller.ts	Fetches traffic events from 511.org
+CHPCADPoller.ts	Scrapes live incidents from CHP CAD page
+CHPPoller.ts	Fetches historical collisions from CKAN
+3. API Routes
+Route	Purpose
+/api/poll	Trigger Caltrans polling
+/api/poll/bay-area-511	Trigger 511.org polling
+/api/poll/chp-cad	Trigger CHP live polling
+/api/historical/chp	Trigger CHP historical import
+/api/caltrans/closures/raw	Query lane closures
+/api/bay-area-511	Query 511.org events
+/api/chp-cad	Query CHP live incidents
+/api/chp-historical/collisions	Query historical collisions
+/api/master-data	Combined data for master map
+4. Dashboard Pages (src/app/dashboard/)
+Page	Content
+page.tsx	Master map with all data sources
+caltrans/page.tsx	Lane closures with map + table
+bayarea511/page.tsx	Mendocino County traffic events
+chp-live/page.tsx	Live CHP incidents
+chp-historical/page.tsx	Collision records
+5. Map Components (src/components/map/)
+Component	Purpose
+simpleMap.tsx	Reusable Leaflet map with markers
+masterMap.tsx	Enhanced map with click handlers
+Key Features Implemented
+Master Dashboard
+
+    Unified map showing all 4 data sources
+
+    Color-coded markers (blue=Caltrans, green=511.org, red=CHP Live, purple=CHP Historical)
+
+    Source filtering with toggle buttons
+
+    Date range filtering (24h, 7d, 30d, all)
+
+    Auto-refresh toggle (60 seconds)
+
+    CSV export of filtered events
+
+    Click-through navigation to service pages
+
+    Clickable summary cards
+
+Service Pages
+
+    Each service has dedicated page with detailed view
+
+    Map + table combined view (Caltrans)
+
+    Mendocino County focus (511.org)
+
+    Real-time incident display (CHP Live)
+
+    Historical data table with filters (CHP Historical)
+
+Polling System
+
+    Manual refresh buttons on each page
+
+    Auto-refresh option on master dashboard
+
+    API request logging for monitoring
+
+    Duplicate detection to prevent re-insertion
+
+Important Fixes Applied
+Vercel Deployment Issue
+
+Problem: Build failed with window is not defined on Vercel
+Cause: Root page (src/app/page.tsx) was using browser APIs during prerendering
+Solution: Replaced with simple server redirect:
+typescript
+
+import { redirect } from 'next/navigation';
+
+export default function HomePage() {
+  redirect('/dashboard');
+}
+
+Leaflet SSR Issue
+
+Solution: All map imports use dynamic import with ssr: false:
+typescript
+
+const SimpleMap = dynamic(() => import('@/components/map/simpleMap'), {
+  ssr: false,
+  loading: () => <div>Loading map...</div>
+});
+
+CHP Historical Date Filter
+
+Problem: CKAN API doesn't support date operators in filters
+Solution: Fetch recent records, then filter client-side
+CHP CAD Scraping
+
+Problem: Table ID was GridView1, not found
+Solution: Use table selector #gvIncidents and row classes .gvRow, .gvAltRow
+Environment Variables Required
+env
+
+# Neon Database
+DATABASE_URL="postgresql://..."
+
+# 511.org API
+BAY_AREA_511_API_KEY="your_key_here"
+
+# Caltrans Districts (optional)
+CALTRANS_DISTRICTS="1,2,3,4,5,6,7,8,9,10,11,12"
+
+Deployment Commands
+bash
+
+# Build locally
+bun run build
+
+# Start production server
+bun run start
+
+# Deploy to Vercel
+vercel --prod
+
+# Database operations
+bun run db:push      # Push schema changes
+bun run db:studio    # Open Drizzle Studio
+
+Polling Commands
+bash
+
+# Manual polling
+curl "http://localhost:3000/api/caltrans/poll?action=poll"
+curl "http://localhost:3000/api/bay-area-511/poll?action=poll"
+curl "http://localhost:3000/api/chp-cad/poll?action=poll"
+curl "http://localhost:3000/api/chp-historical/poll?action=poll&limit=5000"
+
+# Check status
+curl "http://localhost:3000/api/caltrans/poll?action=status"
+
+Known Limitations
+Service	Limitation
+Caltrans	Only returns data during active road work (business hours)
+511.org	Mendocino County events may lack coordinates
+CHP CAD	HTML scraping is fragile; depends on page structure
+CHP Historical	Large imports need pagination; ~120k total records
+Future Enhancement Ideas
+
+    Automated polling - Vercel Cron Jobs for regular data fetching
+
+    Email/SMS alerts - Notifications for SIG Alerts
+
+    Mobile app - PWA or React Native version
+
+    Analytics dashboard - Charts and trends over time
+
+    User authentication - Save user preferences
+
+    Webhook support - Push notifications to external services
+
+File Structure
+text
+
+src/
+├── app/
+│   ├── api/
+│   │   ├── caltrans/
+│   │   ├── bay-area-511/
+│   │   ├── chp-cad/
+│   │   ├── chp-historical/
+│   │   └── master-data/
+│   └── dashboard/
+│       ├── page.tsx              # Master map
+│       ├── caltrans/
+│       ├── bayarea511/
+│       ├── chp-live/
+│       └── chp-historical/
+├── components/
+│   ├── map/
+│   │   └── simpleMap.tsx
+│   └── ui/
+├── lib/
+│   ├── auth/
+│   │   └── schema.ts
+│   ├── db/
+│   │   └── client.ts
+│   └── services/
+│       ├── CaltransPoller.ts
+│       ├── BayArea511Poller.ts
+│       ├── CHPCADPoller.ts
+│       └── CHPPoller.ts
+└── styles/
+    └── globals.css
+
+Production URLs
+
+    Main site: https://your-domain.vercel.app
+
+    Dashboard: /dashboard
+
+    Caltrans: /dashboard/caltrans
+
+    511.org: /dashboard/bayarea511
+
+    CHP Live: /dashboard/chp-live
+
+    CHP Historical: /dashboard/chp-historical
+
+Document generated on: May 23, 2026
+
+## 🗺️ Caltrans Real-time Lane Closures (CWWP2 API) – IMPLEMENTED
+
+**Service:** `src/lib/services/CaltransPoller.ts`  
+**Source:** `https://cwwp2.dot.ca.gov/data/d{1-12}/lcs/lcsStatusDXX.json`  
+**Format:** JSON (official, no auth)  
+**Polling frequency:** On-demand via API or scheduled cron
+
+### Features
+- Polls all 12 Caltrans districts sequentially, filtered to 2 local districts.
+- Upserts closures by unique `source_id`
+- Marks closures as `completed` if not seen for 15 minutes
+- Tracks `timesSeen` for popularity/frequency analysis
+- Stores raw JSON in `raw_data` column
+
+### API Endpoints
+- `GET /api/caltrans/poll` – Trigger immediate poll
+- `GET /api/caltrans/cron/poll` – For Vercel Cron Jobs
+- `GET /api/caltrans/closures` – Query closures (supports district, route, status filters)
+- `GET /api/caltrans/closures/stats` – Get polling statistics
+
+### Database Schema
+See `laneClosures` table in Drizzle schema.
+

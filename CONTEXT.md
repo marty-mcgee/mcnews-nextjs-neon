@@ -3825,7 +3825,7 @@ Production URLs
     CHP Historical: /dashboard/chp-historical
 
 
-Timestamp: Document generated on: May 23, 2026 @ 02:00pm PST
+# Timestamp: Document generated on: May 23, 2026 @ 02:00pm PST
 
 
 ## 🗺️ Caltrans Real-time Lane Closures (CWWP2 API) – IMPLEMENTED
@@ -4020,4 +4020,4 @@ text
 
 Would you like me to help you verify that your CaltransPoller.ts matches the implementation in this CONTEXT.md, or help you add any missing pieces (like the lane_closures Drizzle schema)?
 
-Timestamp: Document generated on: May 23, 2026 @ 02:15pm PST
+# Timestamp: Document generated on: May 23, 2026 @ 02:15pm PST

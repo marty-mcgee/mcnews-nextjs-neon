@@ -7,6 +7,7 @@
 - Neon Postgres + Drizzle ORM
 - shadcn/ui, Tailwind, Leaflet (Maps using OpenStreetMaps)
 - Vercel Production Deployment
+- Bun Package Manager
 
 ## 📡 Data Sources (Official JSON APIs)
 | Source | Type | Status |
@@ -23,11 +24,17 @@
 - `CaltransPoller.ts` – Real-time lane closures from CWWP2
 - `CCTVPoller.ts` – Caltrans cameras from CWWP2
 
-## 🚦 Caltrans CWWP2 Poller
-- **Endpoint:** `https://cwwp2.dot.ca.gov/data/d{1-12}/lcs/lcsStatusDXX.json`
-- **Format:** JSON, no auth
-- **Polling:** Every 5 minutes, all 12 districts
+## 🚦 Bay Area 511.org Poller
+- **Endpoint:** `http://api.511.org/traffic/events`
+- **Format:** JSON, requires .env key `BAY_AREA_511_API_KEY`
+- **Polling:** Every 5 minutes, all locations
 - **Upsert logic:** By `source_id`, marks stale after 15 min
+
+## 📊 CHP CAD Live Poller
+- **Source:** `https://cad.chp.ca.gov/Traffic.aspx`
+- **Format:** HTML, requires scraping using Cheerio logic (mostly working)
+- **Communication Centers:** Saved in database, related to CHP CAD Events
+- **Focus:** Ukiah, Humboldt, but support all other CHP CAD CenterCodes
 
 ## 📊 CHP Historical Poller
 - **Source:** `data.ca.gov/api/3/action/datastore_search`
@@ -35,14 +42,26 @@
 - **CKAN limitation:** No date operators in filters → client-side filtering
 - **Batch import:** Paginates 100 records at a time
 
+## 🚦 Caltrans CWWP2 Poller
+- **Endpoint:** `https://cwwp2.dot.ca.gov/data/d{1-12}/lcs/lcsStatusDXX.json`
+- **Format:** JSON, no auth
+- **Polling:** Every 5 minutes, all 12 districts
+- **Upsert logic:** By `source_id`, marks stale after 15 min
+
+## 🚦 Caltrans CCTV Poller
+- **Endpoint:** `https://cwwp2.dot.ca.gov/data/d{1-12}/lcs/lcsStatusDXX.json`
+- **Format:** JSON, no auth
+- **Polling:** Every 5 minutes, all 12 districts
+- **Upsert logic:** By `source_id`, marks stale after 15 min
+
 ## ⚠️ Key Decisions
 1. HTML scraping (CHP CAD page is HTML only, so use Cheerio)
 2. All DB operations via Drizzle ORM (no raw SQL)
-3. File name conventions are Next.js App Router + camelCase friendly
+3. File naming conventions are Next.js App Router (camelCase friendly)
 <!-- 4. Vercel serverless functions: `maxDuration = 300` -->
 
 ## 🔧 Common Commands
 ```bash
-npm run db:generate && npm run db:push
+bun db:generate && bun db:push && bun dev
 curl "http://localhost:3000/api/chp-historical/poll?action=poll&limit=5000"
 curl "http://localhost:3000/api/caltrans/poll"

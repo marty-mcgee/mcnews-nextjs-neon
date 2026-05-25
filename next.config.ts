@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
-  reactStrictMode: true,
+  reactStrictMode: false,
   // Ensure you're using the App Router
   experimental: {
     // Any experimental features you're using

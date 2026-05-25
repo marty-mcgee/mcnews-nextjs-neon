@@ -458,7 +458,7 @@ export default function DashboardPage() {
       <Card>
         <CardContent className="p-0 overflow-hidden rounded-xl">
           {mapEvents.length > 0 ? (
-            <SimpleMap events={mapEvents} center={[39.3, -123.5]} zoom={10} height="400px" />
+            <SimpleMap events={mapEvents} center={[39.3, -123.5]} zoom={10} height="600px" />
           ) : (
             <div className="h-[600px] bg-muted flex flex-col items-center justify-center">
               <MapPin className="w-12 h-12 text-muted-foreground mb-2" />

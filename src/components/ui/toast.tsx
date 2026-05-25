@@ -32,7 +32,7 @@ export function Toast({ message, type = 'success', duration = 3000, onClose }: T
   };
 
   return (
-    <div className={`fixed bottom-4 right-4 ${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg z-50 flex items-center gap-3 animate-in slide-in-from-right duration-300`}>
+    <div className={`fixed top-4 right-4 ${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg z-50 flex items-center gap-3 animate-in slide-in-from-right duration-300`}>
       {icons[type]}
       <span className="text-sm">{message}</span>
       <button onClick={onClose} className="ml-2 hover:opacity-80">

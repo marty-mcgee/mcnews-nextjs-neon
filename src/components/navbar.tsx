@@ -14,7 +14,7 @@ export function NavBar() {
   };
 
   return (
-    <nav className="flex items-center justify-between py-6 md:py-8">
+    <nav className="flex items-center justify-between py-2 md:py-2">
       <Link href="/">
         <div className="flex items-center">
           <Image

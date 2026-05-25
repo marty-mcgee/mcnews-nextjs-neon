@@ -61,7 +61,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-4 lg:px-6 py-1">
         <Tabs.Root value={pathname} className="mb-6">
           <Tabs.List className="flex flex-wrap gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
             {tabs.map((tab) => (
@@ -80,7 +80,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </Tabs.List>
         </Tabs.Root>
 
-        <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border overflow-hidden">
+        <div className="rounded-2xl overflow-hidden">
           {children}
         </div>
       </div>

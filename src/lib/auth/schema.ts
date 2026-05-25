@@ -275,6 +275,8 @@ export const chpCadIncidents = pgTable('chp_cad_incidents', {
   location: text('location'),
   city: varchar('city', { length: 100 }),
   county: varchar('county', { length: 100 }),
+  latitude: decimal('latitude', { precision: 10, scale: 7 }),
+  longitude: decimal('longitude', { precision: 10, scale: 7 }),
   logTime: timestamp('log_time'),
   details: text('details'),
   status: varchar('status', { length: 20 }).default('active'),

@@ -1,70 +1,130 @@
 # Project Context – mcnews-nextjs-neon
 
-**Last Updated: May 23, 2026 @ 03:00pm PST**
+**Last Updated: May 25, 2026 @ 04:30pm PST**
+
+---
 
 ## 🧱 Tech Stack
-- Next.js (App Router), TypeScript, React
-- Neon Postgres + Drizzle ORM
-- shadcn/ui, Tailwind, Leaflet (Maps using OpenStreetMaps)
-- Vercel Production Deployment
-- Bun Package Manager
 
-## 📡 Data Sources (Official JSON APIs)
-| Source | Type | Status |
-|--------|------|--------|
-| Bay Area 511 (511.org) | Real-time incidents | ✅ Working |
-| CHP CAD (Live) | Live dispatcher feed (HTML scraping via Cheerio) | ✅ Working |
-| CHP CKAN | Historical collisions | ✅ Implemented |
-| Caltrans CWWP2 | Real-time lane closures | ✅ Implemented |
+- **Framework:** Next.js (App Router), TypeScript, React
+- **Database:** Neon Postgres + Drizzle ORM
+- **UI:** shadcn/ui, Tailwind, Leaflet (OpenStreetMaps)
+- **Deployment:** Vercel
+- **Package Manager:** Bun
 
-## 📁 Key Services (`src/lib/services/`)
-- `BayArea511Poller.ts` – 511.org incidents and maps
-- `CHPCADPoller.ts` – Live dispatcher feed (HTML scraping via Cheerio)
-- `CHPPoller.ts` – Historical collisions from CKAN
-- `CaltransPoller.ts` – Real-time lane closures from CWWP2
-- `CCTVPoller.ts` – Caltrans cameras from CWWP2
+---
 
-## 🚦 Bay Area 511.org Poller
-- **Endpoint:** `http://api.511.org/traffic/events`
-- **Format:** JSON, requires .env key `BAY_AREA_511_API_KEY`
-- **Polling:** Every 5 minutes, all locations
-- **Upsert logic:** By `source_id`, marks stale after 15 min
+## 📡 Data Sources
 
-## 📊 CHP CAD Live Poller
-- **Endpoint:** `https://cad.chp.ca.gov/Traffic.aspx`
-- **Format:** HTML, requires scraping using Cheerio logic (mostly working)
-- **Communication Centers:** Saved in database, related to CHP CAD Events
-- **Focus:** Ukiah, Humboldt, but support all other CHP CAD CenterCodes
+| Source | Type | Method | Status |
+|--------|------|--------|--------|
+| CHP CAD (Live) | Live dispatcher feed | HTML scraping (Cheerio) | ✅ Working |
+| CHP CKAN | Historical collisions | Official JSON API (CKAN) | ✅ Working |
+| Caltrans CWWP2 | Real-time lane closures | Official JSON API | ✅ Working |
+| Bay Area 511 | Real-time incidents | Official JSON API (511.org) | ✅ Working |
+| Caltrans CCTV | Traffic cameras | Official JSON API | ✅ Working |
 
-## 📊 CHP Historical Poller
-- **Endpoint:** `data.ca.gov/api/3/action/datastore_search`
-- **Resource ID:** `b8ce0ca4-b4e9-490d-b4d1-1f4ec48cbefb`
-- **Format:** JSON, no auth
-- **CKAN limitation:** No date operators in filters → client-side filtering
-- **Batch import:** Paginates 100 records at a time
+---
 
-## 🚦 Caltrans CWWP2 Poller
-- **Endpoint:** `https://cwwp2.dot.ca.gov/data/d{1-12}/lcs/lcsStatusDXX.json`
-- **Format:** JSON, no auth
-- **Polling:** Every 5 minutes, all 12 districts
-- **Upsert logic:** By `source_id`, marks stale after 15 min
+## 📁 Service Files (`src/lib/services/`)
 
-## 🚦 Caltrans CCTV Poller
-- **Endpoint:** `https://cwwp2.dot.ca.gov/data/d{1-12}/lcs/lcsStatusDXX.json`
-- **Format:** JSON, no auth
-- **Polling:** Every 5 minutes, all 12 districts
-- **Upsert logic:** By `source_id`, marks stale after 15 min
+| File | Purpose |
+|------|---------|
+| `CHPCADPoller.ts` | Live CHP CAD incidents (Ukiah & Humboldt centers) |
+| `CHPPoller.ts` | Historical CHP collisions from CKAN API |
+| `CaltransPoller.ts` | Real-time lane closures from CWWP2 (all 12 districts) |
+| `BayArea511Poller.ts` | Real-time incidents from 511.org API |
+| `CCTVPoller.ts` | Caltrans traffic cameras |
 
-## ⚠️ Key Decisions
-1. HTML scraping (CHP CAD page is HTML only, so use Cheerio)
-2. All DB operations via Drizzle ORM (no raw SQL)
-3. File naming conventions are Next.js App Router (camelCase friendly)
-<!-- 4. Vercel serverless functions: `maxDuration = 300` -->
+---
+
+## 🗺️ Dashboard Pages
+
+| Page | Route | Features |
+|------|-------|----------|
+| Master Map | `/dashboard` | All sources combined, layer toggles, date/source filters |
+| 511.org | `/dashboard/511org` | Mendocino filter, expandable rows, map view |
+| Caltrans | `/dashboard/caltrans` | District filter, closure details, map view |
+| CHP Live | `/dashboard/chp-live` | Type filter, incident details, map view |
+| CHP Historical | `/dashboard/chp-historical` | Severity/year filters, collision stats, map view |
+
+---
+
+## 🔧 Key Implementation Details
+
+### CHP CAD Poller
+- Fetches from Ukiah (UKCC) and Humboldt (HMCC) centers only
+- Coordinates are city-level geocoded (fallback to city centers)
+- Uses Cheerio to parse HTML table from `cad.chp.ca.gov/Traffic.aspx`
+
+### CHP Historical Poller
+- Uses native `fetch` (not axios) to avoid Next.js 502 errors
+- Filters by date range client-side (CKAN limitation)
+- County codes: Humboldt (12), Mendocino (23)
+
+### Bay Area 511 Poller
+- Requires `BAY_AREA_511_API_KEY` in environment
+- Extracts coordinates from `geography.coordinates` array
+- Marks events as `closed` when no longer in API response
+
+### Caltrans Poller
+- Fetches all 12 Caltrans districts
+- Uses District 1 for local filtering (Mendocino/Humboldt)
+- Marks stale closures as `completed` after 30 minutes
+
+### API Routes Pattern
+All main data endpoints accept `?showAll=true` to override local filtering:
+- `/api/caltrans/closures/raw?showAll=true`
+- `/api/bay-area-511?showAll=true`
+- `/api/chp-historical/collisions?showAll=true`
+
+---
+
+## 🗄️ Database Schema (Key Tables)
+
+| Table | Purpose |
+|-------|---------|
+| `chp_cad_incidents` | Live CHP incidents |
+| `chp_cad_centers` | CHP communication centers |
+| `chp_collisions` | Historical collisions |
+| `lane_closures` | Caltrans lane closures |
+| `bay_area_traffic_events` | 511.org events |
+| `cctv_cameras` | Traffic cameras |
+| `api_request_logs` | API monitoring |
+
+---
+
+## ⚠️ Known Issues & Solutions
+
+| Issue | Solution |
+|-------|----------|
+| Next.js 502 errors on external APIs | Use native `fetch` instead of `axios` |
+| CKAN date filtering not supported | Fetch all records, filter client-side |
+| CHP CAD has no coordinates | City-level geocoding as fallback |
+| 511.org coordinates nested | Extract from `geography.coordinates` |
+
+---
 
 ## 🔧 Common Commands
+
 ```bash
-bun db:generate && bun db:push && bun dev
-curl "http://localhost:3000/api/bay-area-511/poll?action=poll&limit=100"
-curl "http://localhost:3000/api/chp-cad/poll?action=poll&limit=100"
-curl "http://localhost:3000/api/chp-historical/poll?action=poll&limit=500"
-curl "http://localhost:3000/api/caltrans/poll?action=poll&limit=500"
+# Development
+bun dev
+
+# Database
+bun run db:generate
+bun run db:migrate
+bun run db:push
+
+# Manual Polling
+curl "http://localhost:3000/api/chp-cad/poll?action=poll"
+curl "http://localhost:3000/api/chp-historical/poll?action=poll&limit=500&startDate=2026-01-01"
+curl "http://localhost:3000/api/bay-area-511/poll?action=poll"
+curl "http://localhost:3000/api/caltrans/poll"
+
+# Check Stats
+curl "http://localhost:3000/api/chp-cad/poll?action=stats"
+curl "http://localhost:3000/api/chp-historical/collisions/stats"
+curl "http://localhost:3000/api/bay-area-511/poll?action=stats"
+curl "http://localhost:3000/api/caltrans/closures/stats"
+

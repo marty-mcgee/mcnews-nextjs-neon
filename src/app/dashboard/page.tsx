@@ -3,17 +3,18 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import dynamicImport from 'next/dynamic';
-import { RefreshCw, Filter, X, Car, Radio, AlertTriangle, Calendar, MapPin, Download, Calendar as CalendarIcon, ChevronDown } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import { RefreshCw, Filter, X, Car, Radio, AlertTriangle, Calendar, MapPin, Download, Globe, Eye, EyeOff } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
-export const dynamic = 'force-dynamic';  // Add this line
-
-// Use the same map component that works in 511org
-const SimpleMap = dynamicImport(() => import('@/components/map/simpleMap'), {
+const SimpleMap = dynamic(() => import('@/components/map/simpleMap'), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-[600px] rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+    <div className="w-full h-[600px] rounded-xl bg-muted flex items-center justify-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
     </div>
   ),
 });
@@ -22,7 +23,7 @@ type SourceFilter = 'all' | 'caltrans' | 'bayarea511' | 'chp-live' | 'chp-histor
 type DateRange = '1d' | '7d' | '30d' | 'all';
 
 interface MapEvent {
-  id: number;
+  id: string;
   source: string;
   type: string;
   location: string;
@@ -35,6 +36,8 @@ interface MapEvent {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { showToast, ToastComponent } = useToast();
+  
   const [allEvents, setAllEvents] = useState<MapEvent[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<MapEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,18 +45,18 @@ export default function DashboardPage() {
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [dateRange, setDateRange] = useState<DateRange>('7d');
   const [showFilters, setShowFilters] = useState(false);
+  const [showHistorical, setShowHistorical] = useState(false);
+  const [showAllRegions, setShowAllRegions] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [exporting, setExporting] = useState(false);
 
-  // Fetch all data from your database
   const fetchAllData = useCallback(async () => {
     try {
       const [caltransRes, bayAreaRes, chpLiveRes, chpHistoricalRes] = await Promise.all([
-        fetch('/api/caltrans/closures/raw'),
-        fetch('/api/bay-area-511?limit=2000'),
+        fetch(`/api/caltrans/closures/raw?limit=2000&showAll=${showAllRegions}`),
+        fetch(`/api/bay-area-511?limit=2000&showAll=${showAllRegions}`),
         fetch('/api/chp-cad?limit=2000'),
-        fetch('/api/chp-historical/collisions?limit=2000'),
+        fetch(`/api/chp-historical/collisions?limit=2000&showAll=${showAllRegions}`),
       ]);
       
       const caltransData = await caltransRes.json();
@@ -61,20 +64,20 @@ export default function DashboardPage() {
       const chpLiveData = await chpLiveRes.json();
       const chpHistoricalData = await chpHistoricalRes.json();
       
-      const allEventsList: MapEvent[] = [];
+      const events: MapEvent[] = [];
       
       // Caltrans events
       (caltransData.data || []).forEach((item: any) => {
         if (item.latitude && item.longitude) {
-          allEventsList.push({
-            id: item.closure_id,
+          events.push({
+            id: `caltrans_${item.closure_id}`,
             source: 'caltrans',
             type: item.closure_type || 'Lane Closure',
             location: item.route || 'Unknown',
             description: item.description || '',
             latitude: parseFloat(item.latitude),
             longitude: parseFloat(item.longitude),
-            timestamp: item.end_date,
+            timestamp: item.end_timestamp,
             severity: item.status,
           });
         }
@@ -83,8 +86,8 @@ export default function DashboardPage() {
       // Bay Area 511 events
       (bayAreaData.data || []).forEach((item: any) => {
         if (item.latitude && item.longitude) {
-          allEventsList.push({
-            id: item.id,
+          events.push({
+            id: `bayarea_${item.id}`,
             source: 'bayarea511',
             type: item.eventType || 'Traffic Event',
             location: item.roadwayName || 'Unknown',
@@ -100,8 +103,8 @@ export default function DashboardPage() {
       // CHP Live events
       (chpLiveData.data || []).forEach((item: any) => {
         if (item.latitude && item.longitude) {
-          allEventsList.push({
-            id: item.id,
+          events.push({
+            id: `chplive_${item.id}`,
             source: 'chp-live',
             type: item.incidentType || 'Incident',
             location: item.location || 'Unknown',
@@ -113,58 +116,51 @@ export default function DashboardPage() {
         }
       });
       
-      // CHP Historical events
-      (chpHistoricalData.data || []).forEach((item: any) => {
-        if (item.latitude && item.longitude) {
-          allEventsList.push({
-            id: item.id,
-            source: 'chp-historical',
-            type: 'Collision',
-            location: item.location || 'Unknown',
-            description: item.primaryFactor || '',
-            latitude: parseFloat(item.latitude),
-            longitude: parseFloat(item.longitude),
-            timestamp: item.collisionDate,
-            severity: item.severity,
-          });
-        }
-      });
+      // CHP Historical events (only if toggle is on)
+      if (showHistorical) {
+        (chpHistoricalData.data || []).forEach((item: any) => {
+          if (item.latitude && item.longitude) {
+            events.push({
+              id: `chphist_${item.id}`,
+              source: 'chp-historical',
+              type: 'Collision',
+              location: item.location || 'Unknown',
+              description: item.primaryFactor || '',
+              latitude: parseFloat(item.latitude),
+              longitude: parseFloat(item.longitude),
+              timestamp: item.collisionDate,
+              severity: item.severity,
+            });
+          }
+        });
+      }
       
-      setAllEvents(allEventsList);
+      setAllEvents(events);
       setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching data:', error);
+      showToast('Failed to load dashboard data', 'error');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [showAllRegions, showHistorical, showToast]);
 
-  // Apply filters
   const applyFilters = useCallback(() => {
     let filtered = [...allEvents];
     
-    // Filter by source
     if (sourceFilter !== 'all') {
       filtered = filtered.filter(e => e.source === sourceFilter);
     }
     
-    // Filter by date range
-    if (dateRange !== 'all' && dateRange !== '1d' && dateRange !== '7d' && dateRange !== '30d') {
+    if (dateRange !== 'all') {
       const now = new Date();
       let cutoffDate: Date;
       switch (dateRange) {
-        case '1d':
-          cutoffDate = new Date(now.setDate(now.getDate() - 1));
-          break;
-        case '7d':
-          cutoffDate = new Date(now.setDate(now.getDate() - 7));
-          break;
-        case '30d':
-          cutoffDate = new Date(now.setDate(now.getDate() - 30));
-          break;
-        default:
-          cutoffDate = new Date(0);
+        case '1d': cutoffDate = new Date(now.setDate(now.getDate() - 1)); break;
+        case '7d': cutoffDate = new Date(now.setDate(now.getDate() - 7)); break;
+        case '30d': cutoffDate = new Date(now.setDate(now.getDate() - 30)); break;
+        default: cutoffDate = new Date(0);
       }
       filtered = filtered.filter(e => e.timestamp ? new Date(e.timestamp) > cutoffDate : true);
     }
@@ -172,12 +168,14 @@ export default function DashboardPage() {
     setFilteredEvents(filtered);
   }, [allEvents, sourceFilter, dateRange]);
 
-  // Initial load
   useEffect(() => {
     fetchAllData();
   }, [fetchAllData]);
 
-  // Auto-refresh every 60 seconds
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
+
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
@@ -186,409 +184,201 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [autoRefresh, fetchAllData]);
 
-  // Apply filters when dependencies change
-  useEffect(() => {
-    applyFilters();
-  }, [applyFilters]);
-
   const handleRefresh = async () => {
-    console.log('Refresh button clicked');
     setRefreshing(true);
     await fetchAllData();
-    console.log('Fetch completed, allEvents length:', allEvents.length);
-    // Force filter re-application
-    applyFilters();
-    console.log('Refreshing complete');
-    setRefreshing(false);
+    showToast('Dashboard refreshed', 'success');
   };
 
-  const getSourceCount = (source: string) => {
-    return allEvents.filter(e => e.source === source).length;
-  };
+  const getSourceCount = (source: string) => allEvents.filter(e => e.source === source).length;
 
-  // Export to CSV
   const exportToCSV = () => {
-    setExporting(true);
-    try {
-      const headers = ['Source', 'Type', 'Location', 'Description', 'Latitude', 'Longitude', 'Timestamp', 'Severity'];
-      const csvRows = [headers.join(',')];
-      
-      filteredEvents.forEach(event => {
-        const row = [
-          `"${event.source}"`,
-          `"${event.type.replace(/"/g, '""')}"`,
-          `"${event.location.replace(/"/g, '""')}"`,
-          `"${event.description?.replace(/"/g, '""') || ''}"`,
-          event.latitude,
-          event.longitude,
-          event.timestamp || '',
-          event.severity || '',
-        ];
-        csvRows.push(row.join(','));
-      });
-      
-      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `traffic-events-${new Date().toISOString().split('T')[0]}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Export error:', error);
-    } finally {
-      setExporting(false);
-    }
+    const headers = ['Source', 'Type', 'Location', 'Description', 'Latitude', 'Longitude', 'Timestamp', 'Severity'];
+    const rows = filteredEvents.map(e => [
+      e.source, e.type, e.location, e.description, e.latitude, e.longitude, e.timestamp || '', e.severity || ''
+    ]);
+    const csv = [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `traffic-events-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Export complete', 'success');
   };
 
-  // Handle marker click to navigate to service page
-  const handleMarkerClick = (event: MapEvent) => {
-    switch (event.source) {
-      case 'caltrans':
-        router.push('/dashboard/caltrans');
-        break;
-      case 'bayarea511':
-        router.push('/dashboard/bayarea511');
-        break;
-      case 'chp-live':
-        router.push('/dashboard/chp-live');
-        break;
-      case 'chp-historical':
-        router.push('/dashboard/chp-historical');
-        break;
-    }
-  };
-
-  // Convert events to map format with click handler
-  const mapEvents = filteredEvents
-    .filter(e => e.latitude && e.longitude)
-    .map(e => ({
-      id: e.id,
-      latitude: e.latitude,
-      longitude: e.longitude,
-      roadwayName: e.location,
-      eventType: `${e.source === 'caltrans' ? '🚧' : e.source === 'bayarea511' ? '🚗' : e.source === 'chp-live' ? '🚨' : '📊'} ${e.type}`,
-      description: e.description,
-      onClick: () => handleMarkerClick(e),
-    }));
+  const mapEvents = filteredEvents.filter(e => e.latitude && e.longitude).map(e => ({
+    id: e.id,
+    latitude: e.latitude,
+    longitude: e.longitude,
+    roadwayName: e.location,
+    eventType: `${e.source === 'caltrans' ? '🚧' : e.source === 'bayarea511' ? '🚗' : e.source === 'chp-live' ? '🚨' : '📊'} ${e.type}`,
+    description: e.description,
+    onClick: () => router.push(`/dashboard/${e.source === 'bayarea511' ? '511org' : e.source}`),
+  }));
 
   if (loading) {
     return (
       <div className="flex justify-center items-center h-96">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
   }
 
-  const totalEvents = filteredEvents.length;
-  const totalAllEvents = allEvents.length;
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {ToastComponent}
+      
       {/* Header */}
       <div className="flex flex-wrap justify-between items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Traffic Map</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {totalEvents} events on map
-            {sourceFilter !== 'all' && ` (filtered from ${totalAllEvents} total)`}
+          <h1 className="text-2xl font-bold text-foreground">Traffic Map</h1>
+          <p className="text-sm text-muted-foreground">
+            {filteredEvents.length} events on map • {allEvents.length} total
             {lastUpdated && ` • Updated ${lastUpdated.toLocaleTimeString()}`}
           </p>
         </div>
         
-        <div className="flex items-center gap-2">
-          {/* Auto-refresh Toggle */}
-          <button
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`px-3 py-1.5 text-sm rounded-lg transition-colors flex items-center gap-1.5 ${
-              autoRefresh 
-                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-            }`}
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${autoRefresh ? 'animate-pulse' : ''}`} />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant={autoRefresh ? "default" : "outline"} size="sm" onClick={() => setAutoRefresh(!autoRefresh)}>
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${autoRefresh ? 'animate-pulse' : ''}`} />
             Auto {autoRefresh ? 'ON' : 'OFF'}
-          </button>
+          </Button>
           
-          {/* Export Button */}
-          <button
-            onClick={exportToCSV}
-            disabled={exporting || filteredEvents.length === 0}
-            className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 flex items-center gap-1.5"
-          >
-            <Download className="w-3.5 h-3.5" />
-            {exporting ? 'Exporting...' : 'Export CSV'}
-          </button>
+          <Button variant="outline" size="sm" onClick={exportToCSV}>
+            <Download className="w-3.5 h-3.5 mr-1.5" />
+            Export
+          </Button>
           
-          {/* Filter Button */}
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`px-3 py-1.5 text-sm rounded-lg transition-colors flex items-center gap-1.5 ${
-              sourceFilter !== 'all' || dateRange !== '7d'
-                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-            }`}
-          >
-            <Filter className="w-3.5 h-3.5" />
+          <Button variant={sourceFilter !== 'all' || dateRange !== '7d' ? "secondary" : "outline"} size="sm" onClick={() => setShowFilters(!showFilters)}>
+            <Filter className="w-3.5 h-3.5 mr-1.5" />
             Filter
-            {(sourceFilter !== 'all' || dateRange !== '7d') && (
-              <span className="ml-1 w-4 h-4 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center">
-                {(sourceFilter !== 'all' ? 1 : 0) + (dateRange !== '7d' ? 1 : 0)}
-              </span>
-            )}
-          </button>
+          </Button>
           
-          {/* Refresh Button */}
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+          <Button variant={showHistorical ? "secondary" : "outline"} size="sm" onClick={() => setShowHistorical(!showHistorical)}>
+            <Calendar className="w-3.5 h-3.5 mr-1.5" />
+            Historical {showHistorical ? 'ON' : 'OFF'}
+          </Button>
+          
+          <Button variant={showAllRegions ? "secondary" : "outline"} size="sm" onClick={() => setShowAllRegions(!showAllRegions)}>
+            <Globe className="w-3.5 h-3.5 mr-1.5" />
+            {showAllRegions ? 'All Regions' : 'Local Only'}
+          </Button>
+          
+          <Button size="sm" onClick={handleRefresh} disabled={refreshing}>
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Filter Panel */}
       {showFilters && (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="font-semibold text-gray-900 dark:text-white">Filters</h3>
-            <button onClick={() => setShowFilters(false)} className="text-gray-400 hover:text-gray-600">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Source Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Data Source
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                <button
-                  onClick={() => setSourceFilter('all')}
-                  className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                    sourceFilter === 'all'
-                      ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
-                  }`}
-                >
-                  <MapPin className="w-4 h-4" />
-                  All ({totalAllEvents})
-                </button>
-                
-                <button
-                  onClick={() => setSourceFilter('caltrans')}
-                  className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                    sourceFilter === 'caltrans'
-                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
-                  }`}
-                >
-                  <Car className="w-4 h-4" />
-                  Caltrans ({getSourceCount('caltrans')})
-                </button>
-                
-                <button
-                  onClick={() => setSourceFilter('bayarea511')}
-                  className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                    sourceFilter === 'bayarea511'
-                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
-                  }`}
-                >
-                  <Radio className="w-4 h-4" />
-                  511.org ({getSourceCount('bayarea511')})
-                </button>
-                
-                <button
-                  onClick={() => setSourceFilter('chp-live')}
-                  className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                    sourceFilter === 'chp-live'
-                      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
-                  }`}
-                >
-                  <AlertTriangle className="w-4 h-4" />
-                  CHP Live ({getSourceCount('chp-live')})
-                </button>
-                
-                <button
-                  onClick={() => setSourceFilter('chp-historical')}
-                  className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                    sourceFilter === 'chp-historical'
-                      ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
-                  }`}
-                >
-                  <Calendar className="w-4 h-4" />
-                  Historical ({getSourceCount('chp-historical')})
-                </button>
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex justify-between items-center">
+              <CardTitle className="text-sm font-medium">Filters</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setShowFilters(false)}><X className="w-4 h-4" /></Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Data Source</label>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {[
+                    { value: 'all', label: 'All', icon: <MapPin className="w-3.5 h-3.5" />, count: allEvents.length },
+                    { value: 'caltrans', label: 'Caltrans', icon: <Car className="w-3.5 h-3.5" />, count: getSourceCount('caltrans') },
+                    { value: 'bayarea511', label: '511.org', icon: <Radio className="w-3.5 h-3.5" />, count: getSourceCount('bayarea511') },
+                    { value: 'chp-live', label: 'CHP Live', icon: <AlertTriangle className="w-3.5 h-3.5" />, count: getSourceCount('chp-live') },
+                    { value: 'chp-historical', label: 'Historical', icon: <Calendar className="w-3.5 h-3.5" />, count: getSourceCount('chp-historical') },
+                  ].map(filter => (
+                    <Button
+                      key={filter.value}
+                      variant={sourceFilter === filter.value ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setSourceFilter(filter.value as SourceFilter)}
+                      className="justify-start"
+                    >
+                      {filter.icon}
+                      <span className="ml-1">{filter.label}</span>
+                      <Badge variant="secondary" className="ml-1 text-xs">{filter.count}</Badge>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium mb-1 block">Date Range</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { value: '1d', label: '24h' },
+                    { value: '7d', label: '7 days' },
+                    { value: '30d', label: '30 days' },
+                    { value: 'all', label: 'All' },
+                  ].map(range => (
+                    <Button
+                      key={range.value}
+                      variant={dateRange === range.value ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setDateRange(range.value as DateRange)}
+                    >
+                      {range.label}
+                    </Button>
+                  ))}
+                </div>
               </div>
             </div>
-            
-            {/* Date Range Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Date Range
-              </label>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setDateRange('1d')}
-                  className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                    dateRange === '1d'
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200'
-                  }`}
-                >
-                  Last 24h
-                </button>
-                <button
-                  onClick={() => setDateRange('7d')}
-                  className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                    dateRange === '7d'
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200'
-                  }`}
-                >
-                  Last 7 days
-                </button>
-                <button
-                  onClick={() => setDateRange('30d')}
-                  className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                    dateRange === '30d'
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200'
-                  }`}
-                >
-                  Last 30 days
-                </button>
-                <button
-                  onClick={() => setDateRange('all')}
-                  className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                    dateRange === 'all'
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200'
-                  }`}
-                >
-                  All time
-                </button>
-              </div>
-            </div>
-          </div>
-          
-          {(sourceFilter !== 'all' || dateRange !== '7d') && (
-            <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
-              <button
-                onClick={() => {
-                  setSourceFilter('all');
-                  setDateRange('7d');
-                }}
-                className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-              >
-                <X className="w-3 h-3" />
-                Clear all filters
-              </button>
-            </div>
-          )}
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-4 text-xs">
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-          <span className="text-gray-600 dark:text-gray-400">Caltrans - Click to view</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-          <span className="text-gray-600 dark:text-gray-400">511.org - Click to view</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-red-500"></div>
-          <span className="text-gray-600 dark:text-gray-400">CHP Live - Click to view</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-          <span className="text-gray-600 dark:text-gray-400">CHP Historical - Click to view</span>
-        </div>
-        <div className="flex items-center gap-1.5 ml-auto">
-          <span className="text-gray-400">Click any marker to see service details</span>
-        </div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <Card><CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">Total</p><p className="text-xl font-bold text-foreground">{filteredEvents.length}</p></div><MapPin className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
+        <Card className="border-green-200 dark:border-green-900"><CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">Caltrans</p><p className="text-xl font-bold text-green-600 dark:text-green-400">{getSourceCount('caltrans')}</p></div><Car className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
+        <Card className="border-blue-200 dark:border-blue-900"><CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">511.org</p><p className="text-xl font-bold text-blue-600 dark:text-blue-400">{getSourceCount('bayarea511')}</p></div><Radio className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
+        <Card className="border-red-200 dark:border-red-900"><CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">CHP Live</p><p className="text-xl font-bold text-red-600 dark:text-red-400">{getSourceCount('chp-live')}</p></div><AlertTriangle className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
+        <Card className="border-purple-200 dark:border-purple-900"><CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">CHP Historical</p><p className="text-xl font-bold text-purple-600 dark:text-purple-400">{getSourceCount('chp-historical')}</p></div><Calendar className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
       </div>
 
-      {/* Master Map */}
-      <SimpleMap 
-        events={mapEvents} 
-        center={[39.3, -123.5]} 
-        zoom={10} 
-        height="600px"
-        onMarkerClick={(event: any) => {
-          if (event.onClick) event.onClick();
-        }}
-      />
+      {/* Legend */}
+      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-blue-500"></div>Caltrans</div>
+        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-emerald-500"></div>511.org</div>
+        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-red-500"></div>CHP Live</div>
+        <div className="flex items-center gap-1.5"><div className={`w-3 h-3 rounded-full ${showHistorical ? 'bg-purple-500' : 'bg-gray-300'}`}></div>CHP Historical {!showHistorical && '(hidden)'}</div>
+      </div>
 
-      {/* Source Summary Cards - Clickable */}
+      {/* Map */}
+      <Card>
+        <CardContent className="p-0 overflow-hidden rounded-xl">
+          {mapEvents.length > 0 ? (
+            <SimpleMap events={mapEvents} center={[39.3, -123.5]} zoom={10} height="600px" />
+          ) : (
+            <div className="h-[600px] bg-muted flex flex-col items-center justify-center">
+              <MapPin className="w-12 h-12 text-muted-foreground mb-2" />
+              <p className="text-muted-foreground">No events with location data</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Source Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <button
-          onClick={() => router.push('/dashboard/caltrans')}
-          className="bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors text-left"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Car className="w-4 h-4 text-blue-600" />
-              <span className="text-sm font-medium text-blue-700 dark:text-blue-400">Caltrans</span>
-            </div>
-            <span className="text-lg font-bold text-blue-700 dark:text-blue-400">{getSourceCount('caltrans')}</span>
-          </div>
-          <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Click to view details →</p>
-        </button>
-        
-        <button
-          onClick={() => router.push('/dashboard/bayarea511')}
-          className="bg-emerald-50 dark:bg-emerald-950/20 rounded-lg p-3 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors text-left"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Radio className="w-4 h-4 text-emerald-600" />
-              <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">511.org</span>
-            </div>
-            <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{getSourceCount('bayarea511')}</span>
-          </div>
-          <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">Click to view details →</p>
-        </button>
-        
-        <button
-          onClick={() => router.push('/dashboard/chp-live')}
-          className="bg-red-50 dark:bg-red-950/20 rounded-lg p-3 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-left"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-red-600" />
-              <span className="text-sm font-medium text-red-700 dark:text-red-400">CHP Live</span>
-            </div>
-            <span className="text-lg font-bold text-red-700 dark:text-red-400">{getSourceCount('chp-live')}</span>
-          </div>
-          <p className="text-xs text-red-600 dark:text-red-400 mt-1">Click to view details →</p>
-        </button>
-        
-        <button
-          onClick={() => router.push('/dashboard/chp-historical')}
-          className="bg-purple-50 dark:bg-purple-950/20 rounded-lg p-3 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors text-left"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-purple-600" />
-              <span className="text-sm font-medium text-purple-700 dark:text-purple-400">CHP Historical</span>
-            </div>
-            <span className="text-lg font-bold text-purple-700 dark:text-purple-400">{getSourceCount('chp-historical')}</span>
-          </div>
-          <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">Click to view details →</p>
-        </button>
+        <Card className="cursor-pointer hover:bg-accent transition-colors" onClick={() => router.push('/dashboard/caltrans')}>
+          <CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">Caltrans</p><p className="text-xl font-bold text-foreground">{getSourceCount('caltrans')}</p></div><Car className="w-5 h-5 text-muted-foreground" /></div><p className="text-xs text-muted-foreground mt-1">Click to view details →</p></CardContent>
+        </Card>
+        <Card className="cursor-pointer hover:bg-accent transition-colors" onClick={() => router.push('/dashboard/511org')}>
+          <CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">511.org</p><p className="text-xl font-bold text-foreground">{getSourceCount('bayarea511')}</p></div><Radio className="w-5 h-5 text-muted-foreground" /></div><p className="text-xs text-muted-foreground mt-1">Click to view details →</p></CardContent>
+        </Card>
+        <Card className="cursor-pointer hover:bg-accent transition-colors" onClick={() => router.push('/dashboard/chp-live')}>
+          <CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">CHP Live</p><p className="text-xl font-bold text-foreground">{getSourceCount('chp-live')}</p></div><AlertTriangle className="w-5 h-5 text-muted-foreground" /></div><p className="text-xs text-muted-foreground mt-1">Click to view details →</p></CardContent>
+        </Card>
+        <Card className="cursor-pointer hover:bg-accent transition-colors" onClick={() => router.push('/dashboard/chp-historical')}>
+          <CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">CHP Historical</p><p className="text-xl font-bold text-foreground">{getSourceCount('chp-historical')}</p></div><Calendar className="w-5 h-5 text-muted-foreground" /></div><p className="text-xs text-muted-foreground mt-1">Click to view details →</p></CardContent>
+        </Card>
       </div>
     </div>
   );

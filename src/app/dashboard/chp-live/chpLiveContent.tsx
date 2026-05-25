@@ -1,15 +1,14 @@
 // src/app/dashboard/chp-live/chpLiveContent.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
-import { 
-  RefreshCw, 
-  AlertTriangle, 
-  MapPin, 
-  Clock,
-  Building2,
-  TrendingUp
-} from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import dynamic from 'next/dynamic';
+import { RefreshCw, AlertTriangle, MapPin, Filter, X, Calendar, Clock, Route, Info, Activity, Radio, Phone } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+
+const SimpleMap = dynamic(() => import('@/components/map/simpleMap'), { ssr: false, loading: () => <div className="h-[400px] bg-muted flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div> });
 
 interface CHPIncident {
   id: number;
@@ -21,254 +20,101 @@ interface CHPIncident {
   logTime: string;
   details: string;
   status: string;
-  centerName?: string;
+  latitude: number | null;
+  longitude: number | null;
+  centerName: string;
 }
 
-export default function CHPLiveContent() {
-  const [incidents, setIncidents] = useState<CHPIncident[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [totalCount, setTotalCount] = useState(0);
-  const [isPolling, setIsPolling] = useState(false);
-  const [selectedCounty, setSelectedCounty] = useState<string>('');
-  const [availableCounties, setAvailableCounties] = useState<string[]>([]);
+const formatRelativeTime = (dateString: string | null) => {
+  if (!dateString) return 'N/A';
+  try {
+    const date = new Date(dateString);
+    const diffMins = Math.floor((Date.now() - date.getTime()) / 60000);
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} min ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    return `${Math.floor(diffHours / 24)} days ago`;
+  } catch { return 'N/A'; }
+};
 
-  const fetchData = async () => {
+export default function CHPLiveContent() {
+  const { showToast, ToastComponent } = useToast();
+  const [incidents, setIncidents] = useState<CHPIncident[]>([]);
+  const [filteredIncidents, setFilteredIncidents] = useState<CHPIncident[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isPolling, setIsPolling] = useState(false);
+  const [showMap, setShowMap] = useState(true);
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
-      
-      let url = '/api/chp-cad?limit=200';
-      if (selectedCounty && selectedCounty !== 'all') {
-        url += `&county=${encodeURIComponent(selectedCounty)}`;
-      }
-      
-      const response = await fetch(url);
+      const response = await fetch('/api/chp-cad?limit=500');
       const data = await response.json();
-      
-      if (data.success) {
-        setIncidents(data.data);
-        setTotalCount(data.count || data.data.length);
-        const counties = [...new Set(data.data.map((inc: CHPIncident) => inc.county).filter(Boolean))];
-        setAvailableCounties(counties.sort());
-      } else {
-        setError('Failed to load CHP incidents');
-      }
-    } catch (err) {
-      console.error('Error fetching CHP incidents:', err);
-      setError('Failed to load data');
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (data.success) { setIncidents(data.data); setLastUpdated(new Date()); }
+      else { console.error('Failed to load CHP incidents'); }
+    } catch (err) { console.error(err); } finally { setLoading(false); }
+  }, []);
 
   const pollData = async () => {
     setIsPolling(true);
     try {
       const response = await fetch('/api/chp-cad/poll?action=poll');
       const data = await response.json();
-      if (data.success) {
-        const newCount = data.stats?.newCount || 0;
-        alert(`CHP Live poll completed! Found ${newCount} new incidents.`);
-        await fetchData();
-      } else {
-        alert('Poll failed: ' + (data.error || 'Unknown error'));
-      }
-    } catch (err) {
-      alert('Poll failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
-    } finally {
-      setIsPolling(false);
-    }
+      if (data.success) { await fetchData(); showToast(`Poll complete! ${data.stats?.newCount || 0} new incidents.`, 'success'); }
+      else { showToast('Poll failed', 'error'); }
+    } catch (err) { showToast('Poll failed', 'error'); } finally { setIsPolling(false); }
   };
 
+  useEffect(() => { fetchData(); }, [fetchData]);
+
   useEffect(() => {
-    fetchData();
-  }, [selectedCounty]);
+    let filtered = [...incidents];
+    if (typeFilter !== 'all') filtered = filtered.filter(i => i.incidentType?.toLowerCase().includes(typeFilter));
+    setFilteredIncidents(filtered);
+  }, [incidents, typeFilter]);
+
+  const toggleRowExpansion = (id: number) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(id)) newExpanded.delete(id);
+    else newExpanded.add(id);
+    setExpandedRows(newExpanded);
+  };
+
+  const incidentsWithCoords = filteredIncidents.filter(i => i.latitude && i.longitude);
+  const activeCount = filteredIncidents.filter(i => i.status === 'active').length;
+  const incidentTypes = [...new Set(incidents.map(i => i.incidentType?.toLowerCase()).filter(Boolean))];
 
   const getIncidentTypeBadge = (type: string) => {
     const lowerType = type?.toLowerCase() || '';
-    if (lowerType.includes('sig')) return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300';
-    if (lowerType.includes('accident')) return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300';
-    if (lowerType.includes('fire')) return 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300';
-    if (lowerType.includes('hazard')) return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300';
-    return 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300';
+    if (lowerType.includes('collision') || lowerType.includes('accident')) return 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300';
+    if (lowerType.includes('hazard')) return 'bg-yellow-100 dark:bg-yellow-950/50 text-yellow-700 dark:text-yellow-300';
+    if (lowerType.includes('fire')) return 'bg-orange-100 dark:bg-orange-950/50 text-orange-700 dark:text-orange-300';
+    return 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400';
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
-      </div>
-    );
-  }
+  const mapEvents = incidentsWithCoords.map(i => ({ id: i.id, latitude: i.latitude!, longitude: i.longitude!, roadwayName: i.location, eventType: i.incidentType, description: i.details }));
 
-  if (error) {
-    return (
-      <div className="text-center py-12 text-red-500">
-        <AlertTriangle className="w-12 h-12 mx-auto mb-3" />
-        <p>{error}</p>
-        <button onClick={fetchData} className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg">
-          Retry
-        </button>
-      </div>
-    );
-  }
+  if (loading) return <div className="flex justify-center items-center h-96"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
 
   return (
-    <div className="p-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">CHP Live Incidents</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Real-time incidents from CHP CAD system</p>
-        </div>
-        <button
-          onClick={pollData}
-          disabled={isPolling}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all disabled:opacity-50 shadow-sm"
-        >
-          <RefreshCw className={`w-4 h-4 ${isPolling ? 'animate-spin' : ''}`} />
-          {isPolling ? 'Fetching...' : 'Refresh Data'}
-        </button>
+    <div className="space-y-6">
+      {ToastComponent}
+      <div className="flex flex-wrap justify-between items-center gap-4"><div><h1 className="text-2xl font-bold text-foreground">CHP Live Incidents</h1><p className="text-sm text-muted-foreground">{filteredIncidents.length} incidents • {activeCount} active{lastUpdated && ` • Updated ${lastUpdated.toLocaleTimeString()}`}</p></div><div className="flex gap-2"><select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="px-3 py-1.5 text-sm border rounded-lg bg-background"><option value="all">All Types</option>{incidentTypes.map(t => <option key={t} value={t}>{t?.toUpperCase()}</option>)}</select><Button variant="outline" size="sm" onClick={() => setShowMap(!showMap)}><MapPin className="w-3.5 h-3.5 mr-1.5" />{showMap ? 'Hide Map' : 'Show Map'}</Button><Button size="sm" onClick={pollData} disabled={isPolling}><RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isPolling ? 'animate-spin' : ''}`} />{isPolling ? 'Polling...' : 'Refresh'}</Button></div></div>
+
+      <div className="grid grid-cols-4 gap-3">
+        <Card><CardContent className="p-3"><div className="flex justify-between"><div><p className="text-xs text-muted-foreground">Total</p><p className="text-xl font-bold text-foreground">{filteredIncidents.length}</p></div><AlertTriangle className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
+        <Card><CardContent className="p-3"><div className="flex justify-between"><div><p className="text-xs text-muted-foreground">Active</p><p className="text-xl font-bold text-green-600 dark:text-green-400">{activeCount}</p></div><Activity className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
+        <Card><CardContent className="p-3"><div className="flex justify-between"><div><p className="text-xs text-muted-foreground">On Map</p><p className="text-xl font-bold text-purple-600 dark:text-purple-400">{incidentsWithCoords.length}</p></div><MapPin className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
+        <Card><CardContent className="p-3"><div className="flex justify-between"><div><p className="text-xs text-muted-foreground">Centers</p><p className="text-xl font-bold text-blue-600 dark:text-blue-400">{new Set(incidents.map(i => i.centerName)).size}</p></div><Radio className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-red-600 dark:text-red-400 text-sm font-medium">Total Incidents</p>
-              <p className="text-2xl font-bold text-red-900 dark:text-red-300">{totalCount}</p>
-            </div>
-            <AlertTriangle className="w-8 h-8 text-red-500 opacity-50" />
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-orange-600 dark:text-orange-400 text-sm font-medium">Active Alerts</p>
-              <p className="text-2xl font-bold text-orange-900 dark:text-orange-300">
-                {incidents.filter(i => i.status === 'active').length}
-              </p>
-            </div>
-            <TrendingUp className="w-8 h-8 text-orange-500 opacity-50" />
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-blue-600 dark:text-blue-400 text-sm font-medium">Counties</p>
-              <p className="text-2xl font-bold text-blue-900 dark:text-blue-300">{availableCounties.length}</p>
-            </div>
-            <Building2 className="w-8 h-8 text-blue-500 opacity-50" />
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-purple-600 dark:text-purple-400 text-sm font-medium">Data Source</p>
-              <p className="text-lg font-bold text-purple-900 dark:text-purple-300">CHP CAD</p>
-              <p className="text-xs text-purple-600 dark:text-purple-400">Real-time</p>
-            </div>
-            <Clock className="w-8 h-8 text-purple-500 opacity-50" />
-          </div>
-        </div>
-      </div>
+      {showMap && mapEvents.length > 0 && (<Card><CardContent className="p-0 overflow-hidden rounded-xl"><SimpleMap events={mapEvents} center={[39.3, -123.5]} zoom={10} height="400px" /></CardContent></Card>)}
 
-      {/* County Filter */}
-      {availableCounties.length > 0 && (
-        <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-gray-500" />
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Filter by County:</label>
-            </div>
-            <select
-              value={selectedCounty}
-              onChange={(e) => setSelectedCounty(e.target.value)}
-              className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-red-500"
-            >
-              <option value="">All Counties</option>
-              {availableCounties.map((county) => (
-                <option key={county} value={county}>{county}</option>
-              ))}
-            </select>
-            {selectedCounty && (
-              <button
-                onClick={() => setSelectedCounty('')}
-                className="text-sm text-red-600 hover:text-red-700 dark:text-red-400"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Incidents Grid */}
-      {incidents.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          <AlertTriangle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-          <p className="text-lg">No incidents found</p>
-          <p className="text-sm mt-1">Click refresh to fetch current incidents from CHP CAD</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3">
-          {incidents.map((incident) => (
-            <div key={incident.id} className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 hover:shadow-md transition-shadow border border-gray-100 dark:border-gray-700">
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 mt-0.5">
-                  <div className="w-8 h-8 rounded-lg bg-white dark:bg-gray-900 shadow-sm flex items-center justify-center">
-                    <AlertTriangle className="w-4 h-4 text-red-500" />
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2 flex-wrap">
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">{incident.incidentType || 'Unknown'}</h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">{incident.location}</p>
-                    </div>
-                    <div className="flex-shrink-0">
-                      <span className={`px-2 py-1 text-xs rounded-full ${getIncidentTypeBadge(incident.incidentType)}`}>
-                        {incident.incidentType || 'Event'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-4 mt-3 text-xs text-gray-500 dark:text-gray-400">
-                    {incident.county && (
-                      <span className="flex items-center gap-1">
-                        <Building2 className="w-3 h-3" />
-                        {incident.county}
-                      </span>
-                    )}
-                    {incident.city && (
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        {incident.city}
-                      </span>
-                    )}
-                    {incident.logTime && (
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {new Date(incident.logTime).toLocaleTimeString()}
-                      </span>
-                    )}
-                    {incident.centerName && (
-                      <span className="flex items-center gap-1">
-                        <Building2 className="w-3 h-3" />
-                        {incident.centerName} Center
-                      </span>
-                    )}
-                  </div>
-                  {incident.details && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{incident.details}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <Card><div className="overflow-x-auto"><table className="w-full"><thead className="bg-muted/50 border-b"><tr><th className="px-4 py-3 w-8"></th><th className="px-4 py-3 text-left text-xs uppercase">Type</th><th className="px-4 py-3 text-left text-xs uppercase">Location</th><th className="px-4 py-3 text-left text-xs uppercase">Center</th><th className="px-4 py-3 text-left text-xs uppercase">Time</th><th className="px-4 py-3 text-left text-xs uppercase">Status</th></tr></thead><tbody className="divide-y">{filteredIncidents.slice(0, 50).map((incident) => (<React.Fragment key={incident.id}><tr className="hover:bg-muted/50 cursor-pointer" onClick={() => toggleRowExpansion(incident.id)}><td className="px-4 py-3"><Info className="w-4 h-4 text-muted-foreground" /></td><td className="px-4 py-3"><span className={`px-2 py-1 text-xs rounded-full ${getIncidentTypeBadge(incident.incidentType)}`}>{incident.incidentType || 'Unknown'}</span></td><td className="px-4 py-3 text-sm">{incident.location?.substring(0, 50)}</td><td className="px-4 py-3 text-sm">{incident.centerName}</td><td className="px-4 py-3 text-sm text-muted-foreground">{formatRelativeTime(incident.logTime)}</td><td className="px-4 py-3"><span className={`px-2 py-1 text-xs rounded-full ${incident.status === 'active' ? 'bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-800'}`}>{incident.status}</span></td></tr>{expandedRows.has(incident.id) && (<tr className="bg-muted/30"><td colSpan={6} className="px-4 py-3"><div className="text-sm space-y-2"><div className="flex gap-2"><Phone className="w-4 h-4 text-muted-foreground" /><div><p className="font-medium">Details</p><p>{incident.details || 'No details'}</p></div></div><div className="flex gap-2"><MapPin className="w-4 h-4 text-muted-foreground" /><div><p className="font-medium">Location</p><p>{incident.location}, {incident.city}, {incident.county}</p></div></div><div className="flex gap-2"><Calendar className="w-4 h-4 text-muted-foreground" /><div><p className="font-medium">Log Time</p><p>{incident.logTime ? new Date(incident.logTime).toLocaleString() : 'N/A'}</p></div></div></div></td></tr>)}</React.Fragment>))}</tbody></table></div></Card>
     </div>
   );
 }

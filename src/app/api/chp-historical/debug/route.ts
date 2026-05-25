@@ -1,68 +1,67 @@
-// src/app/api/debug/chp-direct/route.ts
 import { NextResponse } from 'next/server';
 import axios from 'axios';
-import { db } from '@/lib/db/client';
-import { chpCollisions } from '@/lib/auth/schema';
-import { eq, sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const results: any = {};
-
+  
   try {
-    // Direct API call
+    // Test 1: Direct axios call from your server
+    console.log('Test 1: Direct API call from server');
     const response = await axios.get('https://data.ca.gov/api/3/action/datastore_search', {
       params: {
         resource_id: 'b8ce0ca4-b4e9-490d-b4d1-1f4ec48cbefb',
         limit: 5,
-        offset: 0
+        sort: 'Crash Date Time desc'
+      },
+      headers: { 'User-Agent': 'CHP-Data-Collector/1.0' },
+      timeout: 30000
+    });
+    
+    results.direct_call = {
+      success: response.data?.success,
+      record_count: response.data?.result?.records?.length || 0,
+      first_record_date: response.data?.result?.records?.[0]?.['Crash Date Time'],
+      error: null
+    };
+    
+    // Test 2: Check what your CHPPoller's fetchCollisionsWithoutDateFilter returns
+    const { CHPPoller } = await import('@/lib/services/CHPPoller');
+    const poller = new CHPPoller();
+    
+    // Try to access the private method via any hack - or we can add a public test method
+    results.poller_status = {
+      polling_active: poller.isPollingActive(),
+      message: 'CHPPoller instance created'
+    };
+    
+    // Test 3: Try a simple fetch with no sort parameter
+    console.log('Test 3: Simple fetch with no sort');
+    const simpleResponse = await axios.get('https://data.ca.gov/api/3/action/datastore_search', {
+      params: {
+        resource_id: 'b8ce0ca4-b4e9-490d-b4d1-1f4ec48cbefb',
+        limit: 5
       }
     });
     
-    results.apiResponse = {
-      status: response.status,
-      success: response.data?.success,
-      recordCount: response.data?.result?.records?.length,
-      total: response.data?.result?.total,
-      firstRecord: response.data?.result?.records?.[0]
+    results.simple_call = {
+      success: simpleResponse.data?.success,
+      record_count: simpleResponse.data?.result?.records?.length || 0,
+      first_record_date: simpleResponse.data?.result?.records?.[0]?.['Crash Date Time']
     };
     
-    // Try to insert one record
-    if (response.data?.result?.records?.length > 0) {
-      const record = response.data.result.records[0];
-      const caseId = record['Report Number'];
-      
-      results.attemptedInsert = { caseId };
-      
-      // Check if exists
-      const existing = await db
-        .select()
-        .from(chpCollisions)
-        .where(eq(chpCollisions.caseId, caseId))
-        .limit(1);
-      
-      if (existing.length === 0) {
-        await db.insert(chpCollisions).values({
-          caseId: caseId,
-          collisionDate: record['Crash Date Time'] ? new Date(record['Crash Date Time']) : null,
-          severity: 'Unknown',
-          county: null,
-          city: record['City Name'],
-          location: record['Primary Road'],
-          injuries: record['NumberInjured'] || 0,
-          fatalities: record['NumberKilled'] || 0,
-          rawData: record,
-        });
-        results.insertResult = 'Successfully inserted';
-      } else {
-        results.insertResult = 'Already exists';
-      }
-    }
+    return NextResponse.json({
+      success: true,
+      results,
+      timestamp: new Date().toISOString()
+    });
     
-    return NextResponse.json({ success: true, results });
-    
-  } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+  } catch (error: any) {
+    return NextResponse.json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    }, { status: 500 });
   }
 }

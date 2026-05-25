@@ -21,7 +21,7 @@ export async function GET(request: Request) {
           stats: result.stats,
           timestamp: new Date().toISOString()
         });
-      case 'status':
+      case 'stats':
         const stats = await poller.getStats();
         return NextResponse.json({
           success: true,

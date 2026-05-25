@@ -4,6 +4,7 @@ import * as cheerio from 'cheerio';
 import { db } from '@/lib/db/client';
 import { chpCadIncidents, chpCadCenters } from '@/lib/auth/schema';
 import { eq, and, sql } from 'drizzle-orm';
+// import { getCityCoordinates } from '@/lib/utils/cityGeocoder';
 
 const CENTERS_LIST = [
   { code: 'UKCC', name: 'Ukiah', county: 'Mendocino' },
@@ -26,71 +27,71 @@ export class CHPCADPoller {
   private lastPollStats: any = null;
 
   async pollAll() {
-    console.log(`\n🚦 Starting CHP CAD poll at ${new Date().toISOString()}`);
+    if (this.pollingActive) {
+      return { success: false, error: 'Polling already in progress' };
+    }
     
     this.pollingActive = true;
     const startTime = Date.now();
     
-    let allIncidents: any[] = [];
-    let totalNew = 0;
-    
-    for (const center of CENTERS_LIST) {
-      const incidents = await this.fetchIncidentsForCenter(center);
-      console.log(`  ${center.name}: ${incidents.length} incidents found`);
-      allIncidents = [...allIncidents, ...incidents];
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-    
-    for (const incident of allIncidents) {
-      const conditions = [eq(chpCadIncidents.sourceId, incident.sourceId)];
-      const whereClause = and(...conditions);
+    try {
+      console.log(`\n🚦 Starting CHP CAD poll at ${new Date().toISOString()}`);
       
-      const existing = await db
-        .select()
-        .from(chpCadIncidents)
-        .where(whereClause)
-        .limit(1);
+      let allIncidents: any[] = [];
       
-      if (existing.length === 0) {
-        await db.insert(chpCadIncidents).values(incident);
-        totalNew++;
+      for (const center of CENTERS_LIST) {
+        const incidents = await this.fetchIncidentsForCenter(center);
+        console.log(`  ${center.name}: ${incidents.length} incidents found`);
+        allIncidents = [...allIncidents, ...incidents];
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
+      
+      let newCount = 0;
+      for (const incident of allIncidents) {
+        const existing = await db
+          .select()
+          .from(chpCadIncidents)
+          .where(eq(chpCadIncidents.sourceId, incident.sourceId))
+          .limit(1);
+        
+        if (existing.length === 0) {
+          await db.insert(chpCadIncidents).values(incident);
+          newCount++;
+        }
+      }
+      
+      const duration = Date.now() - startTime;
+      this.lastPollTime = new Date();
+      this.lastPollStats = { totalFetched: allIncidents.length, newCount, duration };
+      
+      console.log(`✅ CHP CAD Poll complete: ${allIncidents.length} total, ${newCount} new`);
+      
+      return { 
+        success: true, 
+        stats: this.lastPollStats,
+        timestamp: new Date().toISOString()
+      };
+      
+    } catch (error) {
+      console.error('CHP CAD Polling error:', error);
+      return { success: false, error: String(error) };
+    } finally {
+      this.pollingActive = false;
     }
-    
-    const duration = Date.now() - startTime;
-    this.lastPollTime = new Date();
-    this.lastPollStats = { totalFetched: allIncidents.length, newCount: totalNew, duration };
-    
-    console.log(`✅ CHP CAD Poll complete: ${allIncidents.length} total, ${totalNew} new`);
-    
-    this.pollingActive = false;
-    
-    return { 
-      success: true, 
-      stats: { 
-        totalFetched: allIncidents.length, 
-        newCount: totalNew 
-      } 
-    };
   }
 
   private async fetchIncidentsForCenter(center: { code: string; name: string; county: string }) {
     try {
       console.log(`  Fetching ${center.name} (${center.code})...`);
       
-      // Get center ID from database
-      const centerConditions = [eq(chpCadCenters.centerCode, center.code)];
-      const centerWhere = and(...centerConditions);
-      
       const centerRecord = await db
         .select({ id: chpCadCenters.id })
         .from(chpCadCenters)
-        .where(centerWhere)
+        .where(eq(chpCadCenters.centerCode, center.code))
         .limit(1);
       
       const centerId = centerRecord[0]?.id || null;
       
-      // Get initial page to capture viewstate
       const initialResponse = await axios.get(this.baseUrl, {
         headers: { 'User-Agent': this.userAgent },
         timeout: 15000
@@ -182,6 +183,8 @@ export class CHPCADPoller {
         logTime: logTime,
         details: `${incidentType} at ${location}`,
         status: 'active',
+        latitude: null,
+        longitude: null,
         fetchedAt: now,
       });
     });
@@ -191,49 +194,26 @@ export class CHPCADPoller {
   }
 
   async getStats() {
-    try {
-      const totalResult = await db
-        .select({ count: sql<number>`COUNT(*)` })
-        .from(chpCadIncidents);
-      
-      const byCenterResult = await db
-        .select({
-          centerName: chpCadCenters.centerName,
-          centerCode: chpCadCenters.centerCode,
-          count: sql<number>`COUNT(*)`,
-        })
-        .from(chpCadIncidents)
-        .leftJoin(chpCadCenters, eq(chpCadIncidents.centerId, chpCadCenters.id))
-        .groupBy(chpCadCenters.centerName, chpCadCenters.centerCode)
-        .orderBy(sql`count DESC`);
-      
-      const byTypeResult = await db
-        .select({
-          incidentType: chpCadIncidents.incidentType,
-          count: sql<number>`COUNT(*)`,
-        })
-        .from(chpCadIncidents)
-        .groupBy(chpCadIncidents.incidentType)
-        .orderBy(sql`count DESC`)
-        .limit(10);
-      
-      return {
-        total: Number(totalResult[0]?.count || 0),
-        byCenter: byCenterResult,
-        byType: byTypeResult,
-        lastPoll: this.lastPollTime,
-        lastPollStats: this.lastPollStats
-      };
-    } catch (error) {
-      console.error('Error getting CHP CAD stats:', error);
-      return {
-        total: 0,
-        byCenter: [],
-        byType: [],
-        lastPoll: this.lastPollTime,
-        lastPollStats: this.lastPollStats
-      };
-    }
+    const total = await db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(chpCadIncidents);
+    
+    const byCenter = await db
+      .select({
+        centerName: chpCadCenters.centerName,
+        centerCode: chpCadCenters.centerCode,
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(chpCadIncidents)
+      .leftJoin(chpCadCenters, eq(chpCadIncidents.centerId, chpCadCenters.id))
+      .groupBy(chpCadCenters.centerName, chpCadCenters.centerCode);
+    
+    return {
+      total: total[0]?.count || 0,
+      byCenter: byCenter,
+      lastPoll: this.lastPollTime,
+      lastPollStats: this.lastPollStats
+    };
   }
 
   isPollingActive(): boolean {

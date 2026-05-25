@@ -1,350 +1,156 @@
 // src/app/dashboard/caltrans/caltransContent.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useEffect, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { RefreshCw, AlertTriangle, MapPin, Calendar, Car, XCircle, TrendingUp, LayoutGrid, MapIcon, Table2 } from 'lucide-react';
+import { RefreshCw, AlertTriangle, MapPin, Construction, Car, Filter, X, Calendar, Clock, Route, Info, Activity, Map, Eye, EyeOff } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 
-const ClosureMap = dynamic(() => import('@/components/ClosureMap'), { ssr: false });
+const SimpleMap = dynamic(() => import('@/components/map/simpleMap'), {
+  ssr: false,
+  loading: () => <div className="h-[400px] bg-muted flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>,
+});
 
-interface Closure {
-  closure_id: number;
+interface LaneClosure {
+  id: number;
+  sourceId: string;
   district: number;
   route: string;
-  closure_type: string;
-  status: string;
-  end_date: string;
+  direction: string;
+  closureType: string;
+  lanesAffected: string;
+  startTimestamp: string | null;
+  endTimestamp: string | null;
   description: string;
   latitude: number | null;
   longitude: number | null;
+  county: string;
+  city: string;
+  status: string;
+  lastSeen: string;
 }
 
-type ViewType = 'table' | 'map' | 'combined';
+const formatRelativeTime = (dateString: string | null) => {
+  if (!dateString) return 'N/A';
+  try {
+    const date = new Date(dateString);
+    const diffMins = Math.floor((Date.now() - date.getTime()) / 60000);
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} min ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    return `${Math.floor(diffHours / 24)} days ago`;
+  } catch { return 'N/A'; }
+};
+
+const formatDate = (dateString: string | null) => {
+  if (!dateString) return 'N/A';
+  try { return new Date(dateString).toLocaleString(); } catch { return 'Invalid date'; }
+};
 
 export default function CaltransContent() {
-  const router = useRouter();
-  const [mounted, setMounted] = useState(false);
-  const [viewType, setViewType] = useState<ViewType>('combined');
-  const [selectedDistrict, setSelectedDistrict] = useState<string>('');
-  const [closures, setClosures] = useState<Closure[]>([]);
+  const { showToast, ToastComponent } = useToast();
+  const [allClosures, setAllClosures] = useState<LaneClosure[]>([]);
+  const [closures, setClosures] = useState<LaneClosure[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState(false);
+  const [showMap, setShowMap] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
+  const [localOnly, setLocalOnly] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
-      const response = await fetch('/api/caltrans/closures/raw');
+      const response = await fetch(`/api/caltrans/closures/raw?limit=2000${localOnly ? '' : '&showAll=true'}`);
       const data = await response.json();
-      if (data.success && Array.isArray(data.data)) {
-        setClosures(data.data);
+      if (data.success) {
+        setAllClosures(data.data);
+        setLastUpdated(new Date());
       } else {
         setError('Failed to load closures');
       }
-    } catch (err) {
-      console.error('Failed to fetch closures:', err);
-      setError('Failed to load data');
-    } finally {
-      setLoading(false);
-    }
-  };
+    } catch (err) { setError('Failed to load data'); } finally { setLoading(false); }
+  }, [localOnly]);
 
-  const pollCaltrans = async () => {
+  const pollData = async () => {
     setIsPolling(true);
     try {
-      const response = await fetch('/api/caltrans/poll?action=poll');
+      const response = await fetch('/api/caltrans/poll');
       const data = await response.json();
       if (data.success) {
-        alert(`Caltrans poll completed! Found ${data.stats?.totalClosures || 0} closures.`);
         await fetchData();
-      } else {
-        alert('Poll failed: ' + (data.error || 'Unknown error'));
-      }
-    } catch (err) {
-      alert('Poll failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
-    } finally {
-      setIsPolling(false);
-    }
+        showToast(`Poll complete! ${data.stats?.newCount || 0} new, ${data.stats?.closedCount || 0} completed.`, 'success');
+      } else { showToast('Poll failed', 'error'); }
+    } catch (err) { showToast('Poll failed', 'error'); } finally { setIsPolling(false); }
   };
+
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    let filtered = [...allClosures];
+    if (localOnly) filtered = filtered.filter(c => c.district === 1);
+    if (statusFilter !== 'all') filtered = filtered.filter(c => c.status === statusFilter);
+    setClosures(filtered);
+  }, [allClosures, localOnly, statusFilter]);
 
-  const filteredClosures = () => {
-    let filtered = [...closures];
-    if (selectedDistrict) {
-      filtered = filtered.filter(c => c.district === parseInt(selectedDistrict));
-    }
-    return filtered;
+  const toggleRowExpansion = (id: number) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(id)) newExpanded.delete(id);
+    else newExpanded.add(id);
+    setExpandedRows(newExpanded);
   };
 
-  const districtStats = () => {
-    const districtMap = new Map<number, number>();
-    closures.forEach(c => {
-      if (c.status === 'active') {
-        districtMap.set(c.district, (districtMap.get(c.district) || 0) + 1);
-      }
-    });
-    return Array.from(districtMap.entries()).map(([district, count]) => ({ district, count }));
-  };
-
-  const filtered = filteredClosures();
-  const districts = districtStats();
-  const activeClosures = closures.filter(c => c.status === 'active');
-  const closuresWithCoordinates = filtered.filter(c => c.latitude && c.longitude);
+  const closuresWithCoords = closures.filter(c => c.latitude && c.longitude);
+  const activeCount = closures.filter(c => c.status === 'active').length;
+  const localCount = closures.filter(c => c.district === 1).length;
 
   const getClosureTypeBadge = (type: string) => {
     const lowerType = type?.toLowerCase() || '';
-    if (lowerType.includes('closure')) return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300';
-    if (lowerType.includes('work')) return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300';
-    return 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300';
+    if (lowerType.includes('full')) return 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300';
+    if (lowerType.includes('lane')) return 'bg-yellow-100 dark:bg-yellow-950/50 text-yellow-700 dark:text-yellow-300';
+    return 'bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300';
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+  const mapEvents = closuresWithCoords.map(c => ({ id: c.id, latitude: c.latitude!, longitude: c.longitude!, roadwayName: `${c.route} ${c.direction}`, eventType: c.closureType, description: c.description }));
 
-  if (error) {
-    return (
-      <div className="text-center py-12 text-red-500">
-        <AlertTriangle className="w-12 h-12 mx-auto mb-3" />
-        <p>{error}</p>
-        <button onClick={fetchData} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">
-          Retry
-        </button>
-      </div>
-    );
-  }
+  if (loading) return <div className="flex justify-center items-center h-96"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
+  if (error) return <div className="text-center py-12 text-destructive"><AlertTriangle className="w-12 h-12 mx-auto mb-3" /><p>{error}</p><Button onClick={fetchData} className="mt-4">Retry</Button></div>;
 
   return (
-    <div className="p-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Caltrans Lane Closures</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Real-time lane closures from Caltrans CWWP2 API</p>
-        </div>
-        <button
-          onClick={pollCaltrans}
-          disabled={isPolling}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50 shadow-sm"
-        >
-          <RefreshCw className={`w-4 h-4 ${isPolling ? 'animate-spin' : ''}`} />
-          {isPolling ? 'Fetching...' : 'Refresh Data'}
-        </button>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-blue-600 dark:text-blue-400 text-sm font-medium">Total Records</p>
-              <p className="text-2xl font-bold text-blue-900 dark:text-blue-300">{closures.length}</p>
-            </div>
-            <TrendingUp className="w-8 h-8 text-blue-500 opacity-50" />
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-green-600 dark:text-green-400 text-sm font-medium">Active Closures</p>
-              <p className="text-2xl font-bold text-green-900 dark:text-green-300">{activeClosures.length}</p>
-            </div>
-            <AlertTriangle className="w-8 h-8 text-green-500 opacity-50" />
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-purple-600 dark:text-purple-400 text-sm font-medium">Unique Routes</p>
-              <p className="text-2xl font-bold text-purple-900 dark:text-purple-300">{new Set(closures.map(c => c.route)).size}</p>
-            </div>
-            <MapPin className="w-8 h-8 text-purple-500 opacity-50" />
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/20 dark:to-indigo-800/20 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-indigo-600 dark:text-indigo-400 text-sm font-medium">On Map</p>
-              <p className="text-2xl font-bold text-indigo-900 dark:text-indigo-300">{closuresWithCoordinates.length}</p>
-            </div>
-            <MapIcon className="w-8 h-8 text-indigo-500 opacity-50" />
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800/50 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 dark:text-gray-400 text-sm font-medium">Completed</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-gray-300">{closures.filter(c => c.status === 'completed').length}</p>
-            </div>
-            <XCircle className="w-8 h-8 text-gray-500 opacity-50" />
-          </div>
+    <div className="space-y-6">
+      {ToastComponent}
+      
+      <div className="flex flex-wrap justify-between items-center gap-4">
+        <div><h1 className="text-2xl font-bold text-foreground">Caltrans Lane Closures</h1><p className="text-sm text-muted-foreground">{localOnly ? '📍 District 1 (Mendocino/Humboldt)' : '🌎 All Districts'} • {closures.length} closures{lastUpdated && ` • Updated ${lastUpdated.toLocaleTimeString()}`}</p></div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant={localOnly ? "secondary" : "outline"} size="sm" onClick={() => setLocalOnly(!localOnly)}><MapPin className="w-3.5 h-3.5 mr-1.5" />{localOnly ? 'Local Only' : 'All Districts'}</Button>
+          <Button variant={showFilters ? "secondary" : "outline"} size="sm" onClick={() => setShowFilters(!showFilters)}><Filter className="w-3.5 h-3.5 mr-1.5" />Filter</Button>
+          <Button variant="outline" size="sm" onClick={() => setShowMap(!showMap)}><MapPin className="w-3.5 h-3.5 mr-1.5" />{showMap ? 'Hide Map' : 'Show Map'}</Button>
+          <Button size="sm" onClick={pollData} disabled={isPolling}><RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isPolling ? 'animate-spin' : ''}`} />{isPolling ? 'Polling...' : 'Refresh'}</Button>
         </div>
       </div>
 
-      {/* View Toggle */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        <button
-          onClick={() => setViewType('table')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            viewType === 'table'
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200'
-          }`}
-        >
-          <Table2 className="w-4 h-4" /> Table
-        </button>
-        <button
-          onClick={() => setViewType('map')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            viewType === 'map'
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200'
-          }`}
-        >
-          <MapIcon className="w-4 h-4" /> Map
-        </button>
-        <button
-          onClick={() => setViewType('combined')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            viewType === 'combined'
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200'
-          }`}
-        >
-          <LayoutGrid className="w-4 h-4" /> Map + Table
-        </button>
+      {showFilters && (
+        <Card><CardContent className="p-4"><div className="flex justify-between items-center mb-3"><h3 className="font-semibold">Filter Closures</h3><Button variant="ghost" size="sm" onClick={() => setShowFilters(false)}><X className="w-4 h-4" /></Button></div><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-background"><option value="all">All Status</option><option value="active">Active</option><option value="completed">Completed</option></select></CardContent></Card>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <Card><CardContent className="p-3"><div className="flex justify-between"><div><p className="text-xs text-muted-foreground">Total</p><p className="text-xl font-bold text-foreground">{closures.length}</p></div><Construction className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
+        <Card><CardContent className="p-3"><div className="flex justify-between"><div><p className="text-xs text-muted-foreground">Active</p><p className="text-xl font-bold text-green-600 dark:text-green-400">{activeCount}</p></div><Activity className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
+        <Card><CardContent className="p-3"><div className="flex justify-between"><div><p className="text-xs text-muted-foreground">District 1</p><p className="text-xl font-bold text-blue-600 dark:text-blue-400">{localCount}</p></div><MapPin className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
+        <Card><CardContent className="p-3"><div className="flex justify-between"><div><p className="text-xs text-muted-foreground">Full Closures</p><p className="text-xl font-bold text-amber-600 dark:text-amber-400">{closures.filter(c => c.closureType?.toLowerCase().includes('full')).length}</p></div><AlertTriangle className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
+        <Card><CardContent className="p-3"><div className="flex justify-between"><div><p className="text-xs text-muted-foreground">On Map</p><p className="text-xl font-bold text-purple-600 dark:text-purple-400">{closuresWithCoords.length}</p></div><Map className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
       </div>
 
-      {/* District Filter */}
-      {districts.length > 0 && (
-        <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-gray-500" />
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Filter by District:</label>
-            </div>
-            <select
-              value={selectedDistrict}
-              onChange={(e) => setSelectedDistrict(e.target.value)}
-              className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-sm focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Districts</option>
-              {districts.map((d) => (
-                <option key={d.district} value={d.district}>
-                  District {d.district} ({d.count} active)
-                </option>
-              ))}
-            </select>
-            {selectedDistrict && (
-              <button
-                onClick={() => setSelectedDistrict('')}
-                className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {showMap && mapEvents.length > 0 && (<Card><CardContent className="p-0 overflow-hidden rounded-xl"><SimpleMap events={mapEvents} center={[39.3, -123.5]} zoom={10} height="400px" /></CardContent></Card>)}
 
-      {/* Combined View */}
-      {viewType === 'combined' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden h-[500px]">
-            {mounted && <ClosureMap closures={filtered} selectedDistrict={selectedDistrict} />}
-          </div>
-          <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl overflow-hidden">
-            <div className="overflow-y-auto max-h-[500px]">
-              {filtered.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">No active closures found</div>
-              ) : (
-                <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {filtered.map(closure => (
-                    <div
-                      key={closure.closure_id}
-                      className="p-4 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors"
-                      onClick={() => router.push(`/closure/${closure.closure_id}`)}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <span className="font-semibold">{closure.route}</span>
-                          <span className="ml-2 text-xs text-gray-500">Dist {closure.district}</span>
-                          <div className="mt-1">
-                            <span className={`px-2 py-0.5 text-xs rounded-full ${getClosureTypeBadge(closure.closure_type)}`}>
-                              {closure.closure_type}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="text-right text-xs text-gray-500 flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {closure.end_date ? new Date(closure.end_date).toLocaleDateString() : 'N/A'}
-                        </div>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-2 line-clamp-2">{closure.description}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Table Only View */}
-      {viewType === 'table' && (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 dark:bg-gray-800 border-b">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium">Route</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">District</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">Type</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">Status</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">End Date</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">Description</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {filtered.map(closure => (
-                  <tr
-                    key={closure.closure_id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
-                    onClick={() => router.push(`/closure/${closure.closure_id}`)}
-                  >
-                    <td className="px-4 py-3 text-sm font-medium">{closure.route}</td>
-                    <td className="px-4 py-3 text-sm">{closure.district}</td>
-                    <td className="px-4 py-3"><span className={`px-2 py-0.5 text-xs rounded-full ${getClosureTypeBadge(closure.closure_type)}`}>{closure.closure_type}</span></td>
-                    <td className="px-4 py-3"><span className={`px-2 py-0.5 text-xs rounded-full ${closure.status === 'active' ? 'bg-green-100 dark:bg-green-900/30 text-green-800' : 'bg-gray-100 dark:bg-gray-800 text-gray-800'}`}>{closure.status}</span></td>
-                    <td className="px-4 py-3 text-sm flex items-center gap-1"><Calendar className="w-3 h-3" />{closure.end_date ? new Date(closure.end_date).toLocaleDateString() : 'N/A'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500 max-w-md truncate">{closure.description}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Map Only View */}
-      {viewType === 'map' && (
-        <div className="bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden h-[600px]">
-          {mounted && <ClosureMap closures={filtered} selectedDistrict={selectedDistrict} />}
-        </div>
-      )}
+      <Card><div className="overflow-x-auto"><table className="w-full"><thead className="bg-muted/50 border-b"><tr><th className="px-4 py-3 w-8"></th><th className="px-4 py-3 text-left text-xs uppercase">Route</th><th className="px-4 py-3 text-left text-xs uppercase">Direction</th><th className="px-4 py-3 text-left text-xs uppercase">Type</th><th className="px-4 py-3 text-left text-xs uppercase">Lanes</th><th className="px-4 py-3 text-left text-xs uppercase">Status</th><th className="px-4 py-3 text-left text-xs uppercase">District</th><th className="px-4 py-3 text-left text-xs uppercase">Last Seen</th></tr></thead><tbody className="divide-y">{closures.slice(0, 50).map((closure) => (<React.Fragment key={closure.id}><tr className="hover:bg-muted/50 cursor-pointer" onClick={() => toggleRowExpansion(closure.id)}><td className="px-4 py-3"><Info className="w-4 h-4 text-muted-foreground" /></td><td className="px-4 py-3 text-sm font-medium">{closure.route || 'N/A'}</td><td className="px-4 py-3 text-sm">{closure.direction || '—'}</td><td className="px-4 py-3"><span className={`px-2 py-1 text-xs rounded-full ${getClosureTypeBadge(closure.closureType)}`}>{closure.closureType || 'Unknown'}</span></td><td className="px-4 py-3 text-sm">{closure.lanesAffected || '—'}</td><td className="px-4 py-3"><span className={`px-2 py-1 text-xs rounded-full ${closure.status === 'active' ? 'bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-800'}`}>{closure.status}</span></td><td className="px-4 py-3 text-sm">{closure.district}</td><td className="px-4 py-3 text-sm text-muted-foreground">{formatRelativeTime(closure.lastSeen)}</td></tr>{expandedRows.has(closure.id) && (<tr className="bg-muted/30"><td colSpan={8} className="px-4 py-3"><div className="text-sm space-y-2"><div className="flex gap-2"><Info className="w-4 h-4 text-muted-foreground" /><div><p className="font-medium">Description</p><p>{closure.description || 'No description'}</p></div></div><div className="flex gap-2"><Calendar className="w-4 h-4 text-muted-foreground" /><div><p className="font-medium">Schedule</p><p>{formatDate(closure.startTimestamp)} → {formatDate(closure.endTimestamp)}</p></div></div><div className="flex gap-2"><Route className="w-4 h-4 text-muted-foreground" /><div><p className="font-medium">Location</p><p>{closure.county || closure.city || 'N/A'}</p></div></div></div></td></tr>)}</React.Fragment>))}</tbody></table></div></Card>
     </div>
   );
 }

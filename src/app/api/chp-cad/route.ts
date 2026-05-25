@@ -1,30 +1,53 @@
 // src/app/api/chp-cad/route.ts
 import { NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
+import { db } from '@/lib/db/client';
 import { chpCadIncidents, chpCadCenters } from '@/lib/auth/schema';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, desc, sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const centerId = searchParams.get('centerId');
-  const limit = parseInt(searchParams.get('limit') || '100');
-  
+  const limit = parseInt(searchParams.get('limit') || '2000');
+  const action = searchParams.get('action');
+
   try {
-    const connectionString = process.env.DATABASE_URL!;
-    const sqlClient = neon(connectionString);
-    const db = drizzle(sqlClient);
-    
-    const conditions = [];
-    if (centerId && centerId !== 'all') {
-      conditions.push(eq(chpCadIncidents.centerId, parseInt(centerId)));
+    // Handle stats action
+    if (action === 'stats') {
+      const total = await db.select({ count: sql<number>`COUNT(*)` }).from(chpCadIncidents);
+      
+      const byCenter = await db
+        .select({
+          centerName: chpCadCenters.centerName,
+          centerCode: chpCadCenters.centerCode,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(chpCadIncidents)
+        .leftJoin(chpCadCenters, eq(chpCadIncidents.centerId, chpCadCenters.id))
+        .groupBy(chpCadCenters.centerName, chpCadCenters.centerCode);
+      
+      const byType = await db
+        .select({
+          incidentType: chpCadIncidents.incidentType,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(chpCadIncidents)
+        .groupBy(chpCadIncidents.incidentType)
+        .orderBy(sql`count DESC`)
+        .limit(10);
+      
+      return NextResponse.json({
+        success: true,
+        data: {
+          total: total[0]?.count || 0,
+          byCenter,
+          byType,
+        },
+      });
     }
-    
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-    
-    let query = db
+
+    // Main query - NOW INCLUDING latitude and longitude
+    const incidents = await db
       .select({
         id: chpCadIncidents.id,
         sourceId: chpCadIncidents.sourceId,
@@ -32,35 +55,31 @@ export async function GET(request: Request) {
         location: chpCadIncidents.location,
         city: chpCadIncidents.city,
         county: chpCadIncidents.county,
-        logTime: chpCadIncidents.logTime,
         details: chpCadIncidents.details,
+        logTime: chpCadIncidents.logTime,
         status: chpCadIncidents.status,
-        centerId: chpCadIncidents.centerId,
+        latitude: chpCadIncidents.latitude,    // ✅ ADDED
+        longitude: chpCadIncidents.longitude,  // ✅ ADDED
+        createdAt: chpCadIncidents.createdAt,
         centerName: chpCadCenters.centerName,
         centerCode: chpCadCenters.centerCode,
       })
       .from(chpCadIncidents)
       .leftJoin(chpCadCenters, eq(chpCadIncidents.centerId, chpCadCenters.id))
-      .orderBy(desc(chpCadIncidents.logTime))
+      .orderBy(desc(chpCadIncidents.createdAt))
       .limit(limit);
-    
-    if (whereClause) {
-      query = query.where(whereClause);
-    }
-    
-    const incidents = await query;
-    
+
     return NextResponse.json({
       success: true,
       data: incidents,
       count: incidents.length,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-    
+
   } catch (error) {
-    console.error('CHP CAD query error:', error);
+    console.error('CHP CAD API Error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch CHP incidents' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }

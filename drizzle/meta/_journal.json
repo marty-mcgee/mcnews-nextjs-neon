@@ -8,6 +8,13 @@
       "when": 1779452928357,
       "tag": "0000_old_wallop",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779652392306,
+      "tag": "0001_dark_blizzard",
+      "breakpoints": true
     }
   ]
 }

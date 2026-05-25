@@ -21,11 +21,18 @@ export async function GET() {
       `http://api.511.org/traffic/events?api_key=${process.env.BAY_AREA_511_API_KEY}&format=json`
     );
     const data = await response.json();
+    // Return a sample of the first event with all its fields
+    const sample = Array.isArray(data) ? data[0] : (data.events?.[0] || null);
+
     results.directApi = {
       status: response.status,
       isArray: Array.isArray(data),
-      count: Array.isArray(data) ? data.length : 0,
-      sample: Array.isArray(data) && data.length > 0 ? data[0] : data
+      // count: Array.isArray(data) ? data.length : 0,
+      // sample: Array.isArray(data) && data.length > 0 ? data[0] : data,
+      // new
+      totalEvents: Array.isArray(data) ? data.length : (data.events?.length || 0),
+      sampleEvent: sample,
+      allFields: sample ? Object.keys(sample) : []
     };
   } catch (error) {
     results.directApi = { error: String(error) };

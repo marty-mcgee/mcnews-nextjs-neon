@@ -1,6 +1,6 @@
 {
   "name": "mcnews-nextjs-neon",
-  "version": "0.5.0",
+  "version": "0.5.2",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -8,7 +8,7 @@
     "start": "next start",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "echo 'Use db:push for development'",
-    "db:push": "drizzle-kit push --strict --verbose",
+    "db:push": "drizzle-kit push --strict --verbose --force",
     "db:studio": "drizzle-kit studio",
     "db:seed": "curl -X GET http://localhost:3000/api/caltrans/seed",
     "db:poll": "curl -X GET http://localhost:3000/api/caltrans/poll?action=poll",

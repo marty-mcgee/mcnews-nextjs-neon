@@ -515,4 +515,24 @@ Your `CONTEXT.md` is **production-grade documentation**. Any future AI session (
 
 ---
 
+## ⚙️ Polling Control & Optimization (May 25, 2026)
+
+### Dashboard Data Fetching
+- **Unified endpoint:** `/api/dashboard` combines all 4 data sources
+- **Single API call** per refresh instead of 4 separate calls
+- **Auto-refresh interval:** 60 seconds (user-toggleable)
+- **Caching:** 30-second cache to prevent duplicate requests
+
+### Cron Job Management
+- **Production:** Controlled schedules in `vercel.json`
+- **Development:** Disabled via dummy schedule (`0 0 31 2 *`)
+- **Manual triggers:** Available via `/api/*/poll` endpoints
+
+### Duplicate Prevention
+- **Concurrent fetch blocking:** `isFetching` ref prevents overlapping requests
+- **React Strict Mode:** Handles double-mounting gracefully
+- **Unique keys:** Fallback IDs when primary ID is undefined
+
+---
+
 ## [MM] CONTEXT.md

@@ -177,3 +177,281 @@ curl "http://localhost:3000/api/bay-area-511/cron"
 curl "http://localhost:3000/api/caltrans/cron"
 curl "http://localhost:3000/api/chp-cad/cron"
 curl "http://localhost:3000/api/chp-historical/cron"
+
+---
+
+## 🎨 UI Design Improvements (May 25, 2026)
+
+### Main Dashboard Layer Controls (`/dashboard`)
+
+The main dashboard now features **color-coded layer toggle cards** that control map marker visibility:
+
+| Layer | Color | Icon | Toggle Function |
+|-------|-------|------|-----------------|
+| Caltrans | Blue | 🚧 Car | Show/hide lane closures |
+| 511.org | Emerald | 📻 Radio | Show/hide traffic events |
+| CHP Live | Red | 🚨 AlertTriangle | Show/hide live incidents |
+| CHP Historical | Purple | 📅 Calendar | Show/hide historical collisions |
+
+### Card Features
+- **Click toggles** layer visibility on the map (no page navigation away)
+- **Eye / EyeOff icons** indicate current visibility status
+- **Record counts** display number of items per source
+- **Active state styling** (colored backgrounds, borders) when layer is visible
+- **Show All / Hide All** button for bulk layer control
+
+### Map Features
+- **Dynamic legend** - only shows currently enabled layers
+- **Marker clicks** navigate to service-specific detail pages
+- **Filter panel** for source and date range filtering
+- **Local Only / All Regions** toggle for geographic filtering
+- **Historical data toggle** (off by default for performance)
+- **Auto-refresh** (60 seconds, toggle on/off)
+
+### Toast Notifications
+- Non-intrusive toast notifications replace browser alerts
+- Styled to match theme (light/dark mode)
+- Auto-dismiss after 3 seconds
+- Success/error variants with color-coded icons
+
+### Known Dev-Only Issue
+- React-Leaflet + Next.js Fast Refresh may show `getPane is undefined` error during local development HMR
+- **Does not affect production builds on Vercel** — map works perfectly in production
+- Fix: Add a `key` prop to `MapContainer` that changes on hot reload (if needed)
+
+---
+
+## 📁 Updated File Structure (UI Components)
+
+./src
+├── app
+│   ├── admin
+│   │   └── coordinates
+│   │       └── page.tsx
+│   ├── api
+│   │   ├── auth
+│   │   │   └── [...all]
+│   │   │       └── route.ts
+│   │   ├── bay-area-511
+│   │   │   ├── cron
+│   │   │   │   └── route.ts
+│   │   │   ├── debug
+│   │   │   │   └── route.ts
+│   │   │   ├── poll
+│   │   │   │   └── route.ts
+│   │   │   ├── route.ts
+│   │   │   └── seed
+│   │   │       └── route.ts
+│   │   ├── caltrans
+│   │   │   ├── closures
+│   │   │   │   ├── [id]
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── add-test-coordinates
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── export
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── raw
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── route.ts
+│   │   │   │   ├── search
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── simple
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── stats
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── summary
+│   │   │   │   │   ├── debug
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   └── route.ts
+│   │   │   │   └── update-coordinates
+│   │   │   │       └── route.ts
+│   │   │   ├── cron
+│   │   │   │   └── route.ts
+│   │   │   ├── poll
+│   │   │   │   └── route.ts
+│   │   │   └── seed
+│   │   │       └── route.ts
+│   │   ├── cctv
+│   │   │   └── route.ts
+│   │   ├── chp-cad
+│   │   │   ├── chp-cad-centers
+│   │   │   │   └── route.ts
+│   │   │   ├── cron
+│   │   │   │   └── route.ts
+│   │   │   ├── poll
+│   │   │   │   └── route.ts
+│   │   │   ├── route.ts
+│   │   │   └── seed
+│   │   │       └── chp-cad-centers
+│   │   │           ├── data
+│   │   │           │   └── chpCadCenters.ts
+│   │   │           └── route.ts
+│   │   ├── chp-historical
+│   │   │   ├── collisions
+│   │   │   │   ├── route.ts
+│   │   │   │   └── stats
+│   │   │   │       └── route.ts
+│   │   │   ├── cron
+│   │   │   │   └── route.ts
+│   │   │   ├── debug
+│   │   │   │   └── route.ts
+│   │   │   ├── poll
+│   │   │   │   └── route.ts
+│   │   │   ├── route.ts
+│   │   │   └── seed
+│   │   │       └── route.ts
+│   │   ├── dashboard
+│   │   │   └── stats
+│   │   │       └── route.ts
+│   │   ├── debug
+│   │   │   ├── api-structures
+│   │   │   │   └── route.ts
+│   │   │   ├── compare
+│   │   │   │   └── route.ts
+│   │   │   ├── database
+│   │   │   │   └── route.ts
+│   │   │   ├── full
+│   │   │   │   └── route.ts
+│   │   │   ├── ids
+│   │   │   │   └── route.ts
+│   │   │   ├── route.ts
+│   │   │   ├── schema-check
+│   │   │   │   └── route.ts
+│   │   │   └── test
+│   │   │       ├── add-more
+│   │   │       │   └── route.ts
+│   │   │       ├── caltrans
+│   │   │       │   └── route.ts
+│   │   │       ├── cwwp2-status
+│   │   │       │   └── route.ts
+│   │   │       ├── populate
+│   │   │       │   └── route.ts
+│   │   │       ├── route.ts
+│   │   │       └── verify
+│   │   │           └── route.ts
+│   │   └── master-data
+│   │       └── route.ts
+│   ├── dashboard
+│   │   ├── 511org
+│   │   │   ├── 511orgContent.tsx
+│   │   │   └── page.tsx
+│   │   ├── caltrans
+│   │   │   ├── caltransContent.tsx
+│   │   │   ├── closure
+│   │   │   │   └── [id]
+│   │   │   │       └── page.tsx
+│   │   │   └── page.tsx
+│   │   ├── chp-historical
+│   │   │   ├── chpHistoricalContent.tsx
+│   │   │   └── page.tsx
+│   │   ├── chp-live
+│   │   │   ├── chpLiveContent.tsx
+│   │   │   └── page.tsx
+│   │   ├── layout.tsx
+│   │   ├── page-new-working-0.tsx
+│   │   ├── page-new.tsx
+│   │   └── page.tsx
+│   ├── debug
+│   │   ├── all-polls
+│   │   │   └── route.ts
+│   │   ├── closure-test
+│   │   │   └── page.tsx
+│   │   └── page.tsx
+│   ├── favicon.ico
+│   ├── fonts.js
+│   ├── globals.css
+│   ├── layout.tsx
+│   ├── page.tsx
+│   ├── sign-in
+│   │   └── page.tsx
+│   ├── sign-up
+│   │   └── page.tsx
+│   └── test
+│       └── page.tsx
+├── components
+│   ├── ClosureMap.tsx
+│   ├── DataFreshness.tsx
+│   ├── LoadingSpinner.tsx
+│   ├── dashboard
+│   │   ├── BayArea511.tsx
+│   │   ├── CHPHistorical.tsx
+│   │   ├── CHPLiveIncidents.tsx
+│   │   └── CaltransClosures.tsx
+│   ├── map
+│   │   ├── leafletMap.tsx
+│   │   ├── masterMap.tsx
+│   │   └── simpleMap.tsx
+│   ├── navbar.tsx
+│   ├── themes
+│   │   ├── provider.tsx
+│   │   └── selector.tsx
+│   └── ui
+│       ├── badge.tsx
+│       ├── button.tsx
+│       ├── card.tsx
+│       ├── dialog.tsx
+│       ├── dropdown-menu.tsx
+│       ├── input.tsx
+│       ├── label.tsx
+│       ├── scroll-area.tsx
+│       ├── select.tsx
+│       ├── separator.tsx
+│       ├── skeleton.tsx
+│       ├── table.tsx
+│       ├── tabs.tsx
+│       └── toast.tsx
+└── lib
+    ├── auth
+    │   ├── client.ts
+    │   ├── schema.ts
+    │   └── server.ts
+    ├── db
+    │   ├── client.ts
+    │   └── seed.ts
+    ├── scripts
+    │   ├── audit-511.ts
+    │   ├── audit-caltrans.ts
+    │   ├── audit-chp-cad-live.ts
+    │   ├── audit-chp-cad.ts
+    │   ├── backfill-511-coords.ts
+    │   ├── backfill-chp-cad-city-coords.ts
+    │   ├── backfill-chp-cad-geocode.ts
+    │   ├── check-511-coords.ts
+    │   ├── check-511-data.ts
+    │   ├── check-chp-cad-coords.ts
+    │   ├── check-data-consistency.ts
+    │   ├── compare-ui-vs-db.ts
+    │   ├── database-health.ts
+    │   ├── diagnose-chp-cad.ts
+    │   ├── test-chp-api.ts
+    │   ├── test-ckan-direct.ts
+    │   └── verify-data.ts
+    ├── services
+    │   ├── BayArea511Poller.ts
+    │   ├── CCTVPoller.ts
+    │   ├── CHPCADPoller.ts
+    │   ├── CHPPoller.ts
+    │   ├── CaltransPoller.ts
+    │   ├── MasterDataService.ts
+    │   ├── TravelTimesPoller.ts
+    │   └── index.ts
+    └── utils
+        ├── cityGeocoder.ts
+        ├── index.ts
+        └── locationCoords.ts
+
+82 directories, 134 files
+
+---
+
+## 🔧 Common Commands (Updated)
+
+```bash
+# Test cron jobs locally
+curl "http://localhost:3000/api/bay-area-511/cron"
+curl "http://localhost:3000/api/caltrans/cron"
+curl "http://localhost:3000/api/chp-cad/cron"
+curl "http://localhost:3000/api/chp-historical/cron"
+
+# Export dashboard data to CSV
+# (Click "Export" button on main dashboard)

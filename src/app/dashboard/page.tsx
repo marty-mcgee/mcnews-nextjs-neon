@@ -426,8 +426,14 @@ export default function DashboardPage() {
         <Card className="text-center hover:shadow-md transition-shadow">
           <CardContent className="p-1">
             <p className="text-3xl font-bold text-foreground">{totalEvents}</p>
-            <p className="text-xs text-muted-foreground">Total Events</p>
-            <p className="text-xs text-muted-foreground mt-1">{totalMapEvents} on map</p>
+            <p className="text-xs text-muted-foreground">Current Events</p>
+            {/* <p className="text-xs text-muted-foreground mt-1">{totalMapEvents} on map</p> */}
+            <div className="flex items-center justify-center gap-1 mt-1">
+              <Eye className="w-3 h-3 text-green-500" />
+              <span className="text-xs text-muted-foreground">
+                  Visible
+              </span>
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -73,6 +73,8 @@ export default function SimpleMap({ events, center = [39.3, -123.5], zoom = 11, 
 
   return (
     <MapContainer
+      key={`map-${center[0]}-${center[1]}-${zoom}`}
+      // ref={mapRef} 
       center={center}
       zoom={zoom}
       style={{ height, width: '100%', borderRadius: '0.75rem', zIndex: 1 }}

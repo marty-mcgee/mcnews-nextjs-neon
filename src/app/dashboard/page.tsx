@@ -282,7 +282,7 @@ export default function DashboardPage() {
   const totalMapEvents = mapEvents.length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {ToastComponent}
       
       {/* Header with title and controls */}
@@ -387,10 +387,10 @@ export default function DashboardPage() {
       )}
 
       {/* Layer Toggle Cards - Color coded, click to show/hide markers */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-5 gap-2">
         {/* Total Events Card */}
         <Card className="text-center hover:shadow-md transition-shadow">
-          <CardContent className="p-4">
+          <CardContent className="p-1">
             <p className="text-3xl font-bold text-foreground">{totalEvents}</p>
             <p className="text-xs text-muted-foreground">Total Events</p>
             <p className="text-xs text-muted-foreground mt-1">{totalMapEvents} on map</p>
@@ -402,7 +402,7 @@ export default function DashboardPage() {
           <button
             key={layer.id}
             onClick={() => toggleLayer(layer.id)}
-            className={`rounded-xl p-4 text-center transition-all duration-200 hover:shadow-md ${
+            className={`rounded-xl p-1 text-center transition-all duration-200 hover:shadow-md ${
               layer.enabled 
                 ? `${layer.activeBgColor} border-2 border-${layer.color}-400 dark:border-${layer.color}-500` 
                 : 'bg-muted/30 border border-border hover:bg-muted/50'

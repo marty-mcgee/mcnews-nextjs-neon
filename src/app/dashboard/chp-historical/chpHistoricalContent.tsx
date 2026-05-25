@@ -43,7 +43,7 @@ export default function CHPHistoricalContent() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/chp-historical/collisions?limit=2000');
+      const response = await fetch('/api/chp-historical/collisions?limit=100');
       const data = await response.json();
       if (data.success) { setCollisions(data.data); setLastUpdated(new Date()); }
     } catch (err) { console.error(err); } finally { setLoading(false); }

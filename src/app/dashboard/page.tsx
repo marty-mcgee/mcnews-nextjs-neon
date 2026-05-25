@@ -74,10 +74,10 @@ export default function DashboardPage() {
   const fetchAllData = useCallback(async () => {
     try {
       const [caltransRes, bayAreaRes, chpLiveRes, chpHistoricalRes] = await Promise.all([
-        fetch(`/api/caltrans/closures/raw?limit=2000&showAll=${showAllRegions}`),
-        fetch(`/api/bay-area-511?limit=2000&showAll=${showAllRegions}`),
-        fetch('/api/chp-cad?limit=2000'),
-        fetch(`/api/chp-historical/collisions?limit=2000&showAll=${showAllRegions}`),
+        fetch(`/api/caltrans/closures/raw?limit=100&showAll=${showAllRegions}`),
+        fetch(`/api/bay-area-511?limit=100&showAll=${showAllRegions}`),
+        fetch('/api/chp-cad?limit=100'),
+        fetch(`/api/chp-historical/collisions?limit=100&showAll=${showAllRegions}`),
       ]);
       
       const caltransData = await caltransRes.json();

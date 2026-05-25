@@ -67,7 +67,7 @@ export default function CaltransContent() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/caltrans/closures/raw?limit=2000${localOnly ? '' : '&showAll=true'}`);
+      const response = await fetch(`/api/caltrans/closures/raw?limit=100${localOnly ? '' : '&showAll=true'}`);
       const data = await response.json();
       if (data.success) {
         setAllClosures(data.data);

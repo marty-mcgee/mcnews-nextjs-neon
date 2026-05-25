@@ -40,7 +40,24 @@ interface BayAreaEvent {
   updatedAt: string;
 }
 
-const MENDOCINO_KEYWORDS = ['mendocino', 'ukiah', 'fort bragg', 'willits', 'point arena', 'boonville', 'hopland', 'redwood valley', 'laytonville', 'covelo'];
+const MENDOCINO_KEYWORDS = [
+  'mendocino', 
+  'ukiah', 
+  'fort bragg', 
+  'cleone', 
+  'inglenook', 
+  'westport',
+  'caspar', 
+  'little river',
+  'noyo',   
+  'willits', 
+  'point arena', 
+  'boonville', 
+  'hopland', 
+  'redwood valley', 
+  'laytonville', 
+  'covelo'
+];
 
 const isMendocinoEvent = (event: BayAreaEvent): boolean => {
   const searchText = `${event.county || ''} ${event.city || ''} ${event.roadwayName || ''} ${event.description || ''}`.toLowerCase();
@@ -84,7 +101,7 @@ export default function BayArea511Content() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/bay-area-511?limit=2000${localOnly ? '' : '&showAll=true'}`);
+      const response = await fetch(`/api/bay-area-511?limit=100${localOnly ? '' : '&showAll=true'}`);
       const data = await response.json();
       if (data.success) {
         setAllEvents(data.data);

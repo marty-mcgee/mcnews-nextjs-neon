@@ -2986,9 +2986,9 @@ Since the API has limits, you can run multiple sequential imports:
 bash
 
 # Import in batches by date
-curl "http://localhost:3000/api/chp-historical/poll?action=poll&limit=2000&startDate=2026-01-01&endDate=2026-02-01"
-curl "http://localhost:3000/api/chp-historical/poll?action=poll&limit=2000&startDate=2026-02-01&endDate=2026-03-01"
-curl "http://localhost:3000/api/chp-historical/poll?action=poll&limit=2000&startDate=2026-03-01&endDate=2026-04-01"
+curl "http://localhost:3000/api/chp-historical/poll?action=poll&limit=100&startDate=2026-01-01&endDate=2026-02-01"
+curl "http://localhost:3000/api/chp-historical/poll?action=poll&limit=100&startDate=2026-02-01&endDate=2026-03-01"
+curl "http://localhost:3000/api/chp-historical/poll?action=poll&limit=100&startDate=2026-03-01&endDate=2026-04-01"
 # ... continue as needed
 
 What This Does

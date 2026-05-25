@@ -6,16 +6,16 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useTheme } from 'next-themes';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Activity, Sun, Moon, MapPin, AlertTriangle, BarChart3, Radio } from 'lucide-react';
+import { Activity, Sun, Moon, MapPin, AlertTriangle, BarChart3, Radio, Car } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export const dynamic = 'force-dynamic';
 
 const tabs = [
   { path: '/dashboard', name: 'Overview', icon: AlertTriangle },
-  { path: '/dashboard/511org', name: 'Bay Area 511', icon: Radio },
-  { path: '/dashboard/caltrans', name: 'Caltrans', icon: MapPin },
   { path: '/dashboard/chp-live', name: 'CHP Live', icon: AlertTriangle },
+  { path: '/dashboard/511org', name: 'Bay Area 511', icon: Radio },
+  { path: '/dashboard/caltrans', name: 'Caltrans', icon: Car },
   { path: '/dashboard/chp-historical', name: 'CHP Historical', icon: BarChart3 },
 ];
 
@@ -43,7 +43,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
               <div>
                 <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  California Traffic Monitor
+                  Northern California Traffic Monitor
                 </h1>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Real-time data from Caltrans, 511.org, and CHP</p>
               </div>

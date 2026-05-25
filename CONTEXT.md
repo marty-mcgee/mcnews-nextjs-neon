@@ -1,6 +1,6 @@
 # Project Context – mcnews-nextjs-neon
 
-**Last Updated: May 25, 2026 @ 05:46pm PST**
+**Last Updated: May 25, 2026 @ 05:30pm PST**
 
 ---
 
@@ -26,57 +26,75 @@
 
 ---
 
-## 📁 Service Files (`src/lib/services/`)
+## 🗺️ Main Dashboard (`/dashboard`)
 
-| File | Purpose |
-|------|---------|
-| `CHPCADPoller.ts` | Live CHP CAD incidents (Ukiah & Humboldt centers) |
-| `CHPPoller.ts` | Historical CHP collisions from CKAN API |
-| `CaltransPoller.ts` | Real-time lane closures from CWWP2 (all 12 districts) |
-| `BayArea511Poller.ts` | Real-time incidents from 511.org API |
-| `CCTVPoller.ts` | Caltrans traffic cameras |
+### Layer Toggle Cards
+The main dashboard features **color-coded layer toggle cards** that control map marker visibility:
+
+| Layer | Color | Icon | Function |
+|-------|-------|------|----------|
+| Caltrans | Blue | 🚧 Car | Show/hide lane closures |
+| 511.org | Emerald | 📻 Radio | Show/hide traffic events |
+| CHP Live | Red | 🚨 AlertTriangle | Show/hide live incidents |
+| CHP Historical | Purple | 📅 Calendar | Show/hide historical collisions |
+
+### Card Features
+- **Click toggles** layer visibility on the map (no page navigation)
+- **Eye/EyeOff icons** indicate current visibility status
+- **Record counts** display number of items per source
+- **Active state styling** (colored backgrounds, borders) when visible
+- **Show All / Hide All** button for bulk layer control
+
+### Map Features
+- **Dynamic legend** - only shows currently enabled layers
+- **Marker clicks** navigate to service-specific detail pages
+- **Filter panel** for source and date range filtering
+- **Local Only / All Regions** toggle for geographic filtering
+- **Historical data toggle** (off by default for performance)
+- **Auto-refresh** (60 seconds, toggle on/off)
 
 ---
 
-## 🗺️ Dashboard Pages
+## 📁 Service Dashboard Pages
 
 | Page | Route | Features |
 |------|-------|----------|
-| Master Map | `/dashboard` | All sources combined, layer toggles, date/source filters |
 | 511.org | `/dashboard/511org` | Mendocino filter, expandable rows, map view |
 | Caltrans | `/dashboard/caltrans` | District filter, closure details, map view |
 | CHP Live | `/dashboard/chp-live` | Type filter, incident details, map view |
 | CHP Historical | `/dashboard/chp-historical` | Severity/year filters, collision stats, map view |
 
+### Common Dashboard Patterns
+- **Expandable table rows** - click row to see full details
+- **Toast notifications** for poll results and errors
+- **Theme-aware styling** (light/dark mode support)
+- **Responsive design** with Tailwind CSS
+- **Consistent card layouts** using shadcn/ui components
+
 ---
 
-## 🔧 Key Implementation Details
+## 🔧 API Routes
 
-### CHP CAD Poller
-- Fetches from Ukiah (UKCC) and Humboldt (HMCC) centers only
-- Coordinates are city-level geocoded (fallback to city centers)
-- Uses Cheerio to parse HTML table from `cad.chp.ca.gov/Traffic.aspx`
+### Main Data Endpoints
+| Endpoint | Parameters | Description |
+|----------|------------|-------------|
+| `/api/caltrans/closures/raw` | `?showAll=true` | Lane closures (District 1 by default) |
+| `/api/bay-area-511` | `?showAll=true` | 511.org events (Mendocino by default) |
+| `/api/chp-cad` | - | Live CHP incidents (Ukiah/Humboldt only) |
+| `/api/chp-historical/collisions` | `?showAll=true` | Historical collisions (local counties by default) |
 
-### CHP Historical Poller
-- Uses native `fetch` (not axios) to avoid Next.js 502 errors
-- Filters by date range client-side (CKAN limitation)
-- County codes: Humboldt (12), Mendocino (23)
+### Polling Endpoints
+| Endpoint | Schedule | Description |
+|----------|----------|-------------|
+| `/api/bay-area-511/cron` | Every 5 min | Polls 511.org API |
+| `/api/caltrans/cron` | Every 5 min | Polls Caltrans CWWP2 API |
+| `/api/chp-cad/cron` | Every 10 min | Scrapes CHP CAD page |
+| `/api/chp-historical/cron` | Every 6 hours | Polls CKAN API |
 
-### Bay Area 511 Poller
-- Requires `BAY_AREA_511_API_KEY` in environment
-- Extracts coordinates from `geography.coordinates` array
-- Marks events as `closed` when no longer in API response
-
-### Caltrans Poller
-- Fetches all 12 Caltrans districts
-- Uses District 1 for local filtering (Mendocino/Humboldt)
-- Marks stale closures as `completed` after 30 minutes
-
-### API Routes Pattern
-All main data endpoints accept `?showAll=true` to override local filtering:
-- `/api/caltrans/closures/raw?showAll=true`
-- `/api/bay-area-511?showAll=true`
-- `/api/chp-historical/collisions?showAll=true`
+### Utility Endpoints
+- `/api/*/poll?action=poll` - Manual trigger polling
+- `/api/*/poll?action=stats` - Get poll statistics
+- `/api/*/debug` - Debug endpoints for testing
 
 ---
 
@@ -94,6 +112,19 @@ All main data endpoints accept `?showAll=true` to override local filtering:
 
 ---
 
+## 🎨 UI Components (shadcn/ui)
+
+| Component | Usage |
+|-----------|-------|
+| `Card`, `CardContent` | Stats cards, filter panels |
+| `Button` | Actions (variant: default, outline, secondary, ghost) |
+| `Badge` | Status indicators, counts |
+| `Toast` | Notification system |
+| `Dialog` | Modal dialogs (where used) |
+| `Table` | Data display in service dashboards |
+
+---
+
 ## ⚠️ Known Issues & Solutions
 
 | Issue | Solution |
@@ -105,16 +136,16 @@ All main data endpoints accept `?showAll=true` to override local filtering:
 
 ---
 
-## ⏰ Cron Jobs (Vercel)
+## 📋 Summary of UI Changes Documented
 
-| Service | Endpoint | Schedule |
-|---------|----------|----------|
-| Bay Area 511 | `/api/bay-area-511/cron` | Every 5 minutes |
-| Caltrans | `/api/caltrans/cron` | Every 5 minutes |
-| CHP CAD | `/api/chp-cad/cron` | Every 10 minutes |
-| CHP Historical | `/api/chp-historical/cron` | Every 6 hours |
-
-Each cron endpoint calls the respective poller and logs results to Vercel functions logs.
+| New Feature | Documentation Section |
+|-------------|----------------------|
+| Layer Toggle Cards | Main Dashboard → Layer Toggle Cards |
+| Eye/EyeOff indicators | Main Dashboard → Card Features |
+| Show All/Hide All button | Main Dashboard → Card Features |
+| Dynamic legend | Main Dashboard → Map Features |
+| Theme-aware styling | Common Dashboard Patterns |
+| Toast notifications | Common Dashboard Patterns |
 
 ---
 
@@ -141,3 +172,8 @@ curl "http://localhost:3000/api/chp-historical/collisions/stats"
 curl "http://localhost:3000/api/bay-area-511/poll?action=stats"
 curl "http://localhost:3000/api/caltrans/closures/stats"
 
+# Test Cron Jobs Locally
+curl "http://localhost:3000/api/bay-area-511/cron"
+curl "http://localhost:3000/api/caltrans/cron"
+curl "http://localhost:3000/api/chp-cad/cron"
+curl "http://localhost:3000/api/chp-historical/cron"

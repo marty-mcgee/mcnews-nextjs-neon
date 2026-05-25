@@ -4,10 +4,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { RefreshCw, Filter, X, Car, Radio, AlertTriangle, Calendar, MapPin, Download, Globe, Eye, EyeOff } from 'lucide-react';
+import { RefreshCw, Filter, X, Car, Radio, AlertTriangle, Calendar, MapPin, Download, Globe, Eye, EyeOff, Layers } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
 const SimpleMap = dynamic(() => import('@/components/map/simpleMap'), {
@@ -34,6 +34,19 @@ interface MapEvent {
   severity?: string;
 }
 
+// Layer configuration
+interface LayerConfig {
+  id: string;
+  name: string;
+  icon: React.ReactNode;
+  color: string;
+  bgColor: string;
+  activeColor: string;
+  activeBgColor: string;
+  enabled: boolean;
+  count: number;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { showToast, ToastComponent } = useToast();
@@ -49,6 +62,14 @@ export default function DashboardPage() {
   const [showAllRegions, setShowAllRegions] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  
+  // Layer visibility state
+  const [layers, setLayers] = useState<LayerConfig[]>([
+    { id: 'caltrans', name: 'Caltrans', icon: <Car className="w-4 h-4" />, color: 'blue', bgColor: 'bg-blue-50 dark:bg-blue-950/30', activeColor: 'text-blue-600 dark:text-blue-400', activeBgColor: 'bg-blue-100 dark:bg-blue-900/50', enabled: true, count: 0 },
+    { id: 'bayarea511', name: '511.org', icon: <Radio className="w-4 h-4" />, color: 'emerald', bgColor: 'bg-emerald-50 dark:bg-emerald-950/30', activeColor: 'text-emerald-600 dark:text-emerald-400', activeBgColor: 'bg-emerald-100 dark:bg-emerald-900/50', enabled: true, count: 0 },
+    { id: 'chp-live', name: 'CHP Live', icon: <AlertTriangle className="w-4 h-4" />, color: 'red', bgColor: 'bg-red-50 dark:bg-red-950/30', activeColor: 'text-red-600 dark:text-red-400', activeBgColor: 'bg-red-100 dark:bg-red-900/50', enabled: true, count: 0 },
+    { id: 'chp-historical', name: 'Historical', icon: <Calendar className="w-4 h-4" />, color: 'purple', bgColor: 'bg-purple-50 dark:bg-purple-950/30', activeColor: 'text-purple-600 dark:text-purple-400', activeBgColor: 'bg-purple-100 dark:bg-purple-900/50', enabled: false, count: 0 },
+  ]);
 
   const fetchAllData = useCallback(async () => {
     try {
@@ -65,6 +86,7 @@ export default function DashboardPage() {
       const chpHistoricalData = await chpHistoricalRes.json();
       
       const events: MapEvent[] = [];
+      let counts = { caltrans: 0, bayarea511: 0, 'chp-live': 0, 'chp-historical': 0 };
       
       // Caltrans events
       (caltransData.data || []).forEach((item: any) => {
@@ -80,6 +102,7 @@ export default function DashboardPage() {
             timestamp: item.end_timestamp,
             severity: item.status,
           });
+          counts.caltrans++;
         }
       });
       
@@ -97,6 +120,7 @@ export default function DashboardPage() {
             timestamp: item.startTime,
             severity: item.severity,
           });
+          counts.bayarea511++;
         }
       });
       
@@ -113,10 +137,11 @@ export default function DashboardPage() {
             longitude: parseFloat(item.longitude),
             timestamp: item.logTime,
           });
+          counts['chp-live']++;
         }
       });
       
-      // CHP Historical events (only if toggle is on)
+      // CHP Historical events
       if (showHistorical) {
         (chpHistoricalData.data || []).forEach((item: any) => {
           if (item.latitude && item.longitude) {
@@ -131,12 +156,23 @@ export default function DashboardPage() {
               timestamp: item.collisionDate,
               severity: item.severity,
             });
+            counts['chp-historical']++;
           }
         });
       }
       
       setAllEvents(events);
       setLastUpdated(new Date());
+      
+      // Update layer counts
+      setLayers(prev => prev.map(layer => ({
+        ...layer,
+        count: layer.id === 'caltrans' ? counts.caltrans :
+               layer.id === 'bayarea511' ? counts.bayarea511 :
+               layer.id === 'chp-live' ? counts['chp-live'] :
+               layer.id === 'chp-historical' ? counts['chp-historical'] : 0
+      })));
+      
     } catch (error) {
       console.error('Error fetching data:', error);
       showToast('Failed to load dashboard data', 'error');
@@ -149,10 +185,16 @@ export default function DashboardPage() {
   const applyFilters = useCallback(() => {
     let filtered = [...allEvents];
     
+    // Apply source filter
     if (sourceFilter !== 'all') {
       filtered = filtered.filter(e => e.source === sourceFilter);
     }
     
+    // Apply layer visibility filters (show/hide by source)
+    const enabledSourceIds = layers.filter(l => l.enabled).map(l => l.id);
+    filtered = filtered.filter(e => enabledSourceIds.includes(e.source));
+    
+    // Apply date range filter
     if (dateRange !== 'all') {
       const now = new Date();
       let cutoffDate: Date;
@@ -166,7 +208,19 @@ export default function DashboardPage() {
     }
     
     setFilteredEvents(filtered);
-  }, [allEvents, sourceFilter, dateRange]);
+  }, [allEvents, sourceFilter, dateRange, layers]);
+
+  const toggleLayer = (layerId: string) => {
+    setLayers(prev => prev.map(layer => 
+      layer.id === layerId ? { ...layer, enabled: !layer.enabled } : layer
+    ));
+  };
+
+  // Toggle all layers on/off
+  const toggleAllLayers = () => {
+    const allEnabled = layers.every(l => l.enabled);
+    setLayers(prev => prev.map(layer => ({ ...layer, enabled: !allEnabled })));
+  };
 
   useEffect(() => {
     fetchAllData();
@@ -189,8 +243,6 @@ export default function DashboardPage() {
     await fetchAllData();
     showToast('Dashboard refreshed', 'success');
   };
-
-  const getSourceCount = (source: string) => allEvents.filter(e => e.source === source).length;
 
   const exportToCSV = () => {
     const headers = ['Source', 'Type', 'Location', 'Description', 'Latitude', 'Longitude', 'Timestamp', 'Severity'];
@@ -226,16 +278,19 @@ export default function DashboardPage() {
     );
   }
 
+  const totalEvents = filteredEvents.length;
+  const totalMapEvents = mapEvents.length;
+
   return (
     <div className="space-y-6">
       {ToastComponent}
       
-      {/* Header */}
+      {/* Header with title and controls */}
       <div className="flex flex-wrap justify-between items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Traffic Map</h1>
           <p className="text-sm text-muted-foreground">
-            {filteredEvents.length} events on map • {allEvents.length} total
+            {totalEvents} events on map • {totalMapEvents} markers visible
             {lastUpdated && ` • Updated ${lastUpdated.toLocaleTimeString()}`}
           </p>
         </div>
@@ -256,9 +311,9 @@ export default function DashboardPage() {
             Filter
           </Button>
           
-          <Button variant={showHistorical ? "secondary" : "outline"} size="sm" onClick={() => setShowHistorical(!showHistorical)}>
-            <Calendar className="w-3.5 h-3.5 mr-1.5" />
-            Historical {showHistorical ? 'ON' : 'OFF'}
+          <Button variant="outline" size="sm" onClick={toggleAllLayers}>
+            <Layers className="w-3.5 h-3.5 mr-1.5" />
+            {layers.every(l => l.enabled) ? 'Hide All' : 'Show All'}
           </Button>
           
           <Button variant={showAllRegions ? "secondary" : "outline"} size="sm" onClick={() => setShowAllRegions(!showAllRegions)}>
@@ -276,23 +331,21 @@ export default function DashboardPage() {
       {/* Filter Panel */}
       {showFilters && (
         <Card>
-          <CardHeader className="pb-2">
-            <div className="flex justify-between items-center">
-              <CardTitle className="text-sm font-medium">Filters</CardTitle>
+          <CardContent className="p-4">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-semibold text-foreground">Filter Events</h3>
               <Button variant="ghost" size="sm" onClick={() => setShowFilters(false)}><X className="w-4 h-4" /></Button>
             </div>
-          </CardHeader>
-          <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium mb-1 block">Data Source</label>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   {[
-                    { value: 'all', label: 'All', icon: <MapPin className="w-3.5 h-3.5" />, count: allEvents.length },
-                    { value: 'caltrans', label: 'Caltrans', icon: <Car className="w-3.5 h-3.5" />, count: getSourceCount('caltrans') },
-                    { value: 'bayarea511', label: '511.org', icon: <Radio className="w-3.5 h-3.5" />, count: getSourceCount('bayarea511') },
-                    { value: 'chp-live', label: 'CHP Live', icon: <AlertTriangle className="w-3.5 h-3.5" />, count: getSourceCount('chp-live') },
-                    { value: 'chp-historical', label: 'Historical', icon: <Calendar className="w-3.5 h-3.5" />, count: getSourceCount('chp-historical') },
+                    { value: 'all', label: 'All', icon: <MapPin className="w-3.5 h-3.5" /> },
+                    { value: 'caltrans', label: 'Caltrans', icon: <Car className="w-3.5 h-3.5" /> },
+                    { value: 'bayarea511', label: '511.org', icon: <Radio className="w-3.5 h-3.5" /> },
+                    { value: 'chp-live', label: 'CHP Live', icon: <AlertTriangle className="w-3.5 h-3.5" /> },
+                    { value: 'chp-historical', label: 'Historical', icon: <Calendar className="w-3.5 h-3.5" /> },
                   ].map(filter => (
                     <Button
                       key={filter.value}
@@ -303,7 +356,6 @@ export default function DashboardPage() {
                     >
                       {filter.icon}
                       <span className="ml-1">{filter.label}</span>
-                      <Badge variant="secondary" className="ml-1 text-xs">{filter.count}</Badge>
                     </Button>
                   ))}
                 </div>
@@ -334,24 +386,70 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Card><CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">Total</p><p className="text-xl font-bold text-foreground">{filteredEvents.length}</p></div><MapPin className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
-        <Card className="border-green-200 dark:border-green-900"><CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">Caltrans</p><p className="text-xl font-bold text-green-600 dark:text-green-400">{getSourceCount('caltrans')}</p></div><Car className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
-        <Card className="border-blue-200 dark:border-blue-900"><CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">511.org</p><p className="text-xl font-bold text-blue-600 dark:text-blue-400">{getSourceCount('bayarea511')}</p></div><Radio className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
-        <Card className="border-red-200 dark:border-red-900"><CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">CHP Live</p><p className="text-xl font-bold text-red-600 dark:text-red-400">{getSourceCount('chp-live')}</p></div><AlertTriangle className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
-        <Card className="border-purple-200 dark:border-purple-900"><CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">CHP Historical</p><p className="text-xl font-bold text-purple-600 dark:text-purple-400">{getSourceCount('chp-historical')}</p></div><Calendar className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
+      {/* Layer Toggle Cards - Color coded, click to show/hide markers */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+        {/* Total Events Card */}
+        <Card className="text-center hover:shadow-md transition-shadow">
+          <CardContent className="p-4">
+            <p className="text-3xl font-bold text-foreground">{totalEvents}</p>
+            <p className="text-xs text-muted-foreground">Total Events</p>
+            <p className="text-xs text-muted-foreground mt-1">{totalMapEvents} on map</p>
+          </CardContent>
+        </Card>
+        
+        {/* Layer Toggle Buttons */}
+        {layers.map((layer) => (
+          <button
+            key={layer.id}
+            onClick={() => toggleLayer(layer.id)}
+            className={`rounded-xl p-4 text-center transition-all duration-200 hover:shadow-md ${
+              layer.enabled 
+                ? `${layer.activeBgColor} border-2 border-${layer.color}-400 dark:border-${layer.color}-500` 
+                : 'bg-muted/30 border border-border hover:bg-muted/50'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <span className={layer.enabled ? layer.activeColor : 'text-muted-foreground'}>
+                {layer.icon}
+              </span>
+              <p className={`text-2xl font-bold ${layer.enabled ? layer.activeColor : 'text-muted-foreground'}`}>
+                {layer.count}
+              </p>
+            </div>
+            <p className={`text-sm font-medium ${layer.enabled ? layer.activeColor : 'text-muted-foreground'}`}>
+              {layer.name}
+            </p>
+            <div className="flex items-center justify-center gap-1 mt-1">
+              {layer.enabled ? (
+                <Eye className="w-3 h-3 text-green-500" />
+              ) : (
+                <EyeOff className="w-3 h-3 text-muted-foreground" />
+              )}
+              <span className="text-xs text-muted-foreground">
+                {layer.enabled ? 'Visible' : 'Hidden'}
+              </span>
+            </div>
+          </button>
+        ))}
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-blue-500"></div>Caltrans</div>
-        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-emerald-500"></div>511.org</div>
-        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-red-500"></div>CHP Live</div>
-        <div className="flex items-center gap-1.5"><div className={`w-3 h-3 rounded-full ${showHistorical ? 'bg-purple-500' : 'bg-gray-300'}`}></div>CHP Historical {!showHistorical && '(hidden)'}</div>
+      {/* Map Legend */}
+      <div className="flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
+        {layers.map((layer) => (
+          layer.enabled && (
+            <div key={layer.id} className="flex items-center gap-1.5">
+              <div className={`w-3 h-3 rounded-full bg-${layer.color}-500`}></div>
+              <span>{layer.name}</span>
+            </div>
+          )
+        ))}
+        <div className="flex items-center gap-1.5">
+          <MapPin className="w-3 h-3" />
+          <span>Click any marker to view service details</span>
+        </div>
       </div>
 
-      {/* Map */}
+      {/* Master Map */}
       <Card>
         <CardContent className="p-0 overflow-hidden rounded-xl">
           {mapEvents.length > 0 ? (
@@ -360,26 +458,13 @@ export default function DashboardPage() {
             <div className="h-[600px] bg-muted flex flex-col items-center justify-center">
               <MapPin className="w-12 h-12 text-muted-foreground mb-2" />
               <p className="text-muted-foreground">No events with location data</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Try enabling data layers above or adjusting filters
+              </p>
             </div>
           )}
         </CardContent>
       </Card>
-
-      {/* Source Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="cursor-pointer hover:bg-accent transition-colors" onClick={() => router.push('/dashboard/caltrans')}>
-          <CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">Caltrans</p><p className="text-xl font-bold text-foreground">{getSourceCount('caltrans')}</p></div><Car className="w-5 h-5 text-muted-foreground" /></div><p className="text-xs text-muted-foreground mt-1">Click to view details →</p></CardContent>
-        </Card>
-        <Card className="cursor-pointer hover:bg-accent transition-colors" onClick={() => router.push('/dashboard/511org')}>
-          <CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">511.org</p><p className="text-xl font-bold text-foreground">{getSourceCount('bayarea511')}</p></div><Radio className="w-5 h-5 text-muted-foreground" /></div><p className="text-xs text-muted-foreground mt-1">Click to view details →</p></CardContent>
-        </Card>
-        <Card className="cursor-pointer hover:bg-accent transition-colors" onClick={() => router.push('/dashboard/chp-live')}>
-          <CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">CHP Live</p><p className="text-xl font-bold text-foreground">{getSourceCount('chp-live')}</p></div><AlertTriangle className="w-5 h-5 text-muted-foreground" /></div><p className="text-xs text-muted-foreground mt-1">Click to view details →</p></CardContent>
-        </Card>
-        <Card className="cursor-pointer hover:bg-accent transition-colors" onClick={() => router.push('/dashboard/chp-historical')}>
-          <CardContent className="p-3"><div className="flex justify-between items-center"><div><p className="text-xs text-muted-foreground">CHP Historical</p><p className="text-xl font-bold text-foreground">{getSourceCount('chp-historical')}</p></div><Calendar className="w-5 h-5 text-muted-foreground" /></div><p className="text-xs text-muted-foreground mt-1">Click to view details →</p></CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

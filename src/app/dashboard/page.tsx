@@ -65,9 +65,9 @@ export default function DashboardPage() {
   
   // Layer visibility state
   const [layers, setLayers] = useState<LayerConfig[]>([
-    { id: 'caltrans', name: 'Caltrans', icon: <Car className="w-4 h-4" />, color: 'blue', bgColor: 'bg-blue-50 dark:bg-blue-950/30', activeColor: 'text-blue-600 dark:text-blue-400', activeBgColor: 'bg-blue-100 dark:bg-blue-900/50', enabled: true, count: 0 },
-    { id: 'bayarea511', name: '511.org', icon: <Radio className="w-4 h-4" />, color: 'emerald', bgColor: 'bg-emerald-50 dark:bg-emerald-950/30', activeColor: 'text-emerald-600 dark:text-emerald-400', activeBgColor: 'bg-emerald-100 dark:bg-emerald-900/50', enabled: true, count: 0 },
     { id: 'chp-live', name: 'CHP Live', icon: <AlertTriangle className="w-4 h-4" />, color: 'red', bgColor: 'bg-red-50 dark:bg-red-950/30', activeColor: 'text-red-600 dark:text-red-400', activeBgColor: 'bg-red-100 dark:bg-red-900/50', enabled: true, count: 0 },
+    { id: 'bayarea511', name: '511.org', icon: <Radio className="w-4 h-4" />, color: 'emerald', bgColor: 'bg-emerald-50 dark:bg-emerald-950/30', activeColor: 'text-emerald-600 dark:text-emerald-400', activeBgColor: 'bg-emerald-100 dark:bg-emerald-900/50', enabled: true, count: 0 },
+    { id: 'caltrans', name: 'Caltrans', icon: <Car className="w-4 h-4" />, color: 'blue', bgColor: 'bg-blue-50 dark:bg-blue-950/30', activeColor: 'text-blue-600 dark:text-blue-400', activeBgColor: 'bg-blue-100 dark:bg-blue-900/50', enabled: true, count: 0 },
     { id: 'chp-historical', name: 'Historical', icon: <Calendar className="w-4 h-4" />, color: 'purple', bgColor: 'bg-purple-50 dark:bg-purple-950/30', activeColor: 'text-purple-600 dark:text-purple-400', activeBgColor: 'bg-purple-100 dark:bg-purple-900/50', enabled: false, count: 0 },
   ]);
 
@@ -388,15 +388,6 @@ export default function DashboardPage() {
 
       {/* Layer Toggle Cards - Color coded, click to show/hide markers */}
       <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-5 gap-2">
-        {/* Total Events Card */}
-        <Card className="text-center hover:shadow-md transition-shadow">
-          <CardContent className="p-1">
-            <p className="text-3xl font-bold text-foreground">{totalEvents}</p>
-            <p className="text-xs text-muted-foreground">Total Events</p>
-            <p className="text-xs text-muted-foreground mt-1">{totalMapEvents} on map</p>
-          </CardContent>
-        </Card>
-        
         {/* Layer Toggle Buttons */}
         {layers.map((layer) => (
           <button
@@ -431,6 +422,14 @@ export default function DashboardPage() {
             </div>
           </button>
         ))}
+        {/* Total Events Card */}
+        <Card className="text-center hover:shadow-md transition-shadow">
+          <CardContent className="p-1">
+            <p className="text-3xl font-bold text-foreground">{totalEvents}</p>
+            <p className="text-xs text-muted-foreground">Total Events</p>
+            <p className="text-xs text-muted-foreground mt-1">{totalMapEvents} on map</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Map Legend */}

@@ -1,8 +1,8 @@
 {
   "crons": [
-    { "path": "/api/bay-area-511/cron", "schedule": "0 0 31 2 *" },
-    { "path": "/api/caltrans/cron", "schedule": "0 0 31 2 *" },
-    { "path": "/api/chp-cad/cron", "schedule": "0 0 31 2 *" },
-    { "path": "/api/chp-historical/cron", "schedule": "0 0 31 2 *" }
+    { "path": "/api/bay-area-511/cron", "schedule": "0 0 1 1 2099" },
+    { "path": "/api/caltrans/cron", "schedule": "0 0 1 1 2099" },
+    { "path": "/api/chp-cad/cron", "schedule": "0 0 1 1 2099" },
+    { "path": "/api/chp-historical/cron", "schedule": "0 0 1 1 2099" }
   ]
 }

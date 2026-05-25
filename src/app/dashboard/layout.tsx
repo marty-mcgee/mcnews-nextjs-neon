@@ -35,7 +35,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900">
       <header className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-4 lg:px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center">
@@ -61,7 +61,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-4 lg:px-6 py-1">
+      <div className="max-w-7xl mx-auto px-2 sm:px-2 lg:px-4 py-1">
         <Tabs.Root value={pathname} className="mb-6">
           <Tabs.List className="flex flex-wrap gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
             {tabs.map((tab) => (
@@ -69,7 +69,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 key={tab.path}
                 value={tab.path}
                 asChild
-                className="px-5 py-2.5 rounded-lg text-sm font-medium transition-all data-[state=active]:bg-white dark:data-[state=active]:bg-gray-900 data-[state=active]:shadow-sm"
+                className="px-3 py-2.5 rounded-lg text-sm font-medium transition-all data-[state=active]:bg-white dark:data-[state=active]:bg-gray-900 data-[state=active]:shadow-sm"
               >
                 <Link href={tab.path} className="flex items-center gap-2">
                   <tab.icon className="w-4 h-4" />

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    { "path": "/api/bay-area-511/cron", "schedule": "*/5 * * * *" },
+    { "path": "/api/caltrans/cron", "schedule": "*/5 * * * *" },
+    { "path": "/api/chp-cad/cron", "schedule": "*/10 * * * *" },
+    { "path": "/api/chp-historical/cron", "schedule": "0 */6 * * *" }
+  ]
+}

@@ -1,6 +1,6 @@
 # Project Context – mcnews-nextjs-neon
 
-**Last Updated: May 25, 2026 @ 04:30pm PST**
+**Last Updated: May 25, 2026 @ 05:46pm PST**
 
 ---
 
@@ -102,6 +102,19 @@ All main data endpoints accept `?showAll=true` to override local filtering:
 | CKAN date filtering not supported | Fetch all records, filter client-side |
 | CHP CAD has no coordinates | City-level geocoding as fallback |
 | 511.org coordinates nested | Extract from `geography.coordinates` |
+
+---
+
+## ⏰ Cron Jobs (Vercel)
+
+| Service | Endpoint | Schedule |
+|---------|----------|----------|
+| Bay Area 511 | `/api/bay-area-511/cron` | Every 5 minutes |
+| Caltrans | `/api/caltrans/cron` | Every 5 minutes |
+| CHP CAD | `/api/chp-cad/cron` | Every 10 minutes |
+| CHP Historical | `/api/chp-historical/cron` | Every 6 hours |
+
+Each cron endpoint calls the respective poller and logs results to Vercel functions logs.
 
 ---
 

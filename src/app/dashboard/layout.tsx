@@ -42,9 +42,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Activity className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                <h2 className="text-xl font-bold text-blue-400 dark:text-blue-400">
                   Northern California Traffic Monitor
-                </h1>
+                </h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Real-time data from Caltrans, 511.org, and CHP</p>
               </div>
             </div>

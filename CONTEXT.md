@@ -447,11 +447,72 @@ The main dashboard now features **color-coded layer toggle cards** that control 
 ## 🔧 Common Commands (Updated)
 
 ```bash
-# Test cron jobs locally
+# Development
+bun dev
+
+# Database
+bun run db:generate
+bun run db:migrate
+bun run db:push
+
+# Manual Polling
+curl "http://localhost:3000/api/chp-cad/poll?action=poll"
+curl "http://localhost:3000/api/chp-historical/poll?action=poll&limit=500&startDate=2026-01-01"
+curl "http://localhost:3000/api/bay-area-511/poll?action=poll"
+curl "http://localhost:3000/api/caltrans/poll"
+
+# Check Stats
+curl "http://localhost:3000/api/chp-cad/poll?action=stats"
+curl "http://localhost:3000/api/chp-historical/collisions/stats"
+curl "http://localhost:3000/api/bay-area-511/poll?action=stats"
+curl "http://localhost:3000/api/caltrans/closures/stats"
+
+# Test Cron Jobs Locally
 curl "http://localhost:3000/api/bay-area-511/cron"
 curl "http://localhost:3000/api/caltrans/cron"
 curl "http://localhost:3000/api/chp-cad/cron"
 curl "http://localhost:3000/api/chp-historical/cron"
 
-# Export dashboard data to CSV
+---
+
+# Export dashboard data to CSV+JSON
 # (Click "Export" button on main dashboard)
+
+---
+
+✅ Review Summary
+Section	Status	Notes
+Tech Stack	✅ Complete	Bun, Next.js, Neon, Drizzle, shadcn/ui
+Data Sources	✅ Accurate	5 sources with correct methods
+Main Dashboard	✅ Excellent	Layer toggle cards, eye icons, show/hide all
+Service Dashboards	✅ Complete	4 dashboards with expandable rows
+API Routes	✅ Accurate	Cron jobs, polling endpoints, showAll parameter
+Database Schema	✅ Clear	7 key tables listed
+UI Components	✅ Good	shadcn/ui components documented
+Known Issues	✅ Honest	502 errors, CKAN limitation, geocoding
+File Structure	✅ Very thorough	Full tree showing 82 directories, 134 files
+Commands	✅ Useful	Dev, DB, polling, cron tests
+🔍 Minor Observations (Optional Improvements)
+Issue	Suggestion
+Duplicate content	The "UI Design Improvements" section repeats some content from "Main Dashboard" section
+Duplicate commands	"Common Commands" appears twice (once before file tree, once after)
+Old working files	page-new-working-0.tsx and page-new.tsx in dashboard folder — can be archived
+Missing Leaflet dev issue	The known dev-only getPane is undefined error is documented ✅
+📝 Suggested Cleanup (Optional)
+
+## 🎯 Overall Assessment
+
+| Category | Rating |
+|----------|--------|
+| **Completeness** | ⭐⭐⭐⭐⭐ (5/5) |
+| **Accuracy** | ⭐⭐⭐⭐⭐ (5/5) |
+| **Organization** | ⭐⭐⭐⭐⭐ (5/5) |
+| **Usefulness for AI** | ⭐⭐⭐⭐⭐ (5/5) |
+
+Your `CONTEXT.md` is **production-grade documentation**. Any future AI session (or new developer) can pick this up and immediately understand your entire application architecture, data flows, and UI patterns.
+
+**Great work!** 🎉
+
+---
+
+## [MM] CONTEXT.md

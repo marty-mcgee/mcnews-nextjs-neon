@@ -61,7 +61,7 @@ export default function DashboardPage() {
   const [showHistorical, setShowHistorical] = useState(false);
   const [showAllRegions, setShowAllRegions] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [autoRefresh, setAutoRefresh] = useState(false);
   
   // Layer visibility state
   const [layers, setLayers] = useState<LayerConfig[]>([

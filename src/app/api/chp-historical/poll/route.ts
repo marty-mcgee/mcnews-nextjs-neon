@@ -1,3 +1,4 @@
+// src/app/api/chp-historical/poll/route.ts
 import { NextResponse } from 'next/server';
 import { CHPPoller } from '@/lib/services/CHPPoller';
 
@@ -7,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get('action') || 'poll';
-  const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 5000;
+  const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 1000;
   const startDate = searchParams.get('startDate');
   const endDate = searchParams.get('endDate');
   
@@ -16,9 +17,8 @@ export async function GET(request: Request) {
   try {
     switch (action) {
       case 'poll':
-        console.log(`Starting CHP Historical poll with limit: ${limit}, startDate: ${startDate}, endDate: ${endDate}`);
+        console.log(`Starting CHP Historical poll with limit: ${limit}, startDate: ${startDate || 'auto'}, endDate: ${endDate || 'today'}`);
         
-        // 🔧 FIX: Pass startDate and endDate to pollAll
         const result = await poller.pollAll({ 
           limit, 
           startDate: startDate || undefined,

@@ -1,7 +1,7 @@
 // src/lib/services/CHPPoller.ts
 import { db } from '@/lib/db/client';
 import { chpCollisions } from '@/lib/auth/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, desc } from 'drizzle-orm';
 
 export class CHPPoller {
   private resourceId = 'b8ce0ca4-b4e9-490d-b4d1-1f4ec48cbefb';
@@ -11,85 +11,65 @@ export class CHPPoller {
   private lastPollTime: Date | null = null;
   private lastPollStats: any = null;
 
-  // Local counties: Humboldt (12) and Mendocino (23)
-  private readonly LOCAL_COUNTIES = [12, 23];
-
-  private isLocalCounty(countyCode: number): boolean {
-    return this.LOCAL_COUNTIES.includes(countyCode);
-  }
-
-  async fetchCollisions(options: { 
-    limit?: number; 
-    startDate?: string; 
-    endDate?: string;
-  } = {}) {
-    const { limit = 100, startDate, endDate } = options;
+  /**
+   * Get the latest collision date from the database
+   */
+  private async getLatestCollisionDate(): Promise<Date | null> {
+    const result = await db
+      .select({ latestDate: chpCollisions.collisionDate })
+      .from(chpCollisions)
+      .orderBy(desc(chpCollisions.collisionDate))
+      .limit(1);
     
-    try {
-      const url = `https://data.ca.gov/api/3/action/datastore_search?resource_id=${this.resourceId}&limit=${limit}&sort=Crash%20Date%20Time%20desc`;
-      
-      console.log(`[${new Date().toISOString()}] Fetching CHP collision data...`);
-      
-      const response = await fetch(url);
-      const data = await response.json();
-      
-      let records = data.result?.records || [];
-      const total = data.result?.total || 0;
-      const success = data.success === true;
-      
-      // Filter by date range and local county
-      if (startDate || endDate) {
-        const originalCount = records.length;
-        records = records.filter((record: any) => {
-          // Date filter
-          const crashDate = record['Crash Date Time'];
-          if (!crashDate) return false;
-          const crashDateObj = new Date(crashDate);
-          
-          if (startDate && new Date(startDate) > crashDateObj) return false;
-          if (endDate && new Date(endDate) < crashDateObj) return false;
-          
-          // County filter - only Humboldt (12) or Mendocino (23)
-          const countyCode = record['County Code'];
-          if (!this.isLocalCounty(countyCode)) return false;
-          
-          return true;
-        });
-        console.log(`  Date & county filter applied: ${originalCount} -> ${records.length} records`);
-      }
-      
-      console.log(`  ✓ Fetched ${records.length} local records (total available: ${total})`);
-      
-      return { success, records, total };
-      
-    } catch (error) {
-      console.error('✗ CHP API failed:', error);
-      return { success: false, records: [], total: 0 };
-    }
+    return result[0]?.latestDate || null;
   }
 
-  private async upsertCollision(record: any): Promise<'new' | 'updated' | 'skipped'> {
+  /**
+   * Fetch only NEW records (since latest date in DB)
+   */
+  private async fetchNewRecords(sinceDate: Date, limit: number = 500): Promise<any[]> {
+    const sinceDateStr = sinceDate.toISOString().split('T')[0];
+    
+    const url = new URL(this.baseUrl);
+    url.searchParams.append('resource_id', this.resourceId);
+    url.searchParams.append('limit', String(limit));
+    url.searchParams.append('sort', 'Crash Date Time desc');
+    
+    const response = await fetch(url.toString(), {
+      headers: { 'User-Agent': 'MCNews-CHP-Poller/1.0' }
+    });
+    
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    const records = data.result?.records || [];
+    
+    return records.filter((record: any) => {
+      const crashDate = record['Crash Date Time'];
+      if (!crashDate) return false;
+      return new Date(crashDate) >= sinceDate;
+    });
+  }
+
+  private async upsertCollision(record: any): Promise<'new' | 'skipped'> {
     const caseId = record['Report Number'];
+    if (!caseId) return 'skipped';
     
-    if (!caseId) {
-      return 'skipped';
-    }
+    const existing = await db
+      .select()
+      .from(chpCollisions)
+      .where(eq(chpCollisions.caseId, caseId))
+      .limit(1);
     
-    let collisionDate: Date | null = null;
-    let collisionYear: number | null = null;
-    if (record['Crash Date Time']) {
-      collisionDate = new Date(record['Crash Date Time']);
-      collisionYear = collisionDate.getFullYear();
-    }
+    if (existing.length > 0) return 'skipped';
     
-    const severity = this.mapSeverity(record['Collision Type Description']);
+    const collisionDate = record['Crash Date Time'] ? new Date(record['Crash Date Time']) : null;
     
-    const collisionData = {
+    await db.insert(chpCollisions).values({
       caseId: caseId,
       collisionDate: collisionDate,
-      collisionYear: collisionYear,
-      severity: severity,
-      county: record['County Code'] ? this.mapCountyCodeToName(record['County Code']) : null,
+      collisionYear: collisionDate?.getFullYear() || null,
+      severity: this.mapSeverity(record['Collision Type Description']),
+      county: record['County Code'] ? String(record['County Code']) : null,
       city: record['City Name'],
       location: this.buildLocation(record),
       latitude: record['Latitude'] ? parseFloat(record['Latitude']) : null,
@@ -101,25 +81,9 @@ export class CHPPoller {
       fatalities: record['NumberKilled'] || 0,
       rawData: record,
       lastSeen: new Date(),
-    };
+    });
     
-    try {
-      const existing = await db
-        .select()
-        .from(chpCollisions)
-        .where(eq(chpCollisions.caseId, caseId))
-        .limit(1);
-      
-      if (existing.length > 0) {
-        return 'skipped';
-      } else {
-        await db.insert(chpCollisions).values(collisionData);
-        return 'new';
-      }
-    } catch (error) {
-      console.error(`Error upserting collision ${caseId}:`, error);
-      return 'skipped';
-    }
+    return 'new';
   }
 
   private mapSeverity(collisionType: string): string {
@@ -138,24 +102,9 @@ export class CHPPoller {
     return parts.join(' ') || 'Unknown location';
   }
 
-  private mapCountyCodeToName(countyCode: number): string | null {
-    const countyMap: Record<number, string> = {
-      1: 'Alameda', 2: 'Alpine', 3: 'Amador', 4: 'Butte', 5: 'Calaveras',
-      6: 'Colusa', 7: 'Contra Costa', 8: 'Del Norte', 9: 'El Dorado', 10: 'Fresno',
-      11: 'Glenn', 12: 'Humboldt', 13: 'Imperial', 14: 'Inyo', 15: 'Kern',
-      16: 'Kings', 17: 'Lake', 18: 'Lassen', 19: 'Los Angeles', 20: 'Madera',
-      21: 'Marin', 22: 'Mariposa', 23: 'Mendocino', 24: 'Merced', 25: 'Modoc',
-      26: 'Mono', 27: 'Monterey', 28: 'Napa', 29: 'Nevada', 30: 'Orange',
-      31: 'Placer', 32: 'Plumas', 33: 'Riverside', 34: 'Sacramento', 35: 'San Benito',
-      36: 'San Bernardino', 37: 'San Diego', 38: 'San Francisco', 39: 'San Joaquin',
-      40: 'San Luis Obispo', 41: 'San Mateo', 42: 'Santa Barbara', 43: 'Santa Clara',
-      44: 'Santa Cruz', 45: 'Shasta', 46: 'Sierra', 47: 'Siskiyou', 48: 'Solano',
-      49: 'Sonoma', 50: 'Stanislaus', 51: 'Sutter', 52: 'Tehama', 53: 'Trinity',
-      54: 'Tulare', 55: 'Tuolumne', 56: 'Ventura', 57: 'Yolo', 58: 'Yuba',
-    };
-    return countyMap[countyCode] || null;
-  }
-
+  /**
+   * Simple incremental poller - only fetches new records since last poll
+   */
   async pollAll(options?: { limit?: number; startDate?: string; endDate?: string }): Promise<{ success: boolean; stats?: any; error?: string }> {
     if (this.pollingActive) {
       return { success: false, error: 'Polling already in progress' };
@@ -165,50 +114,54 @@ export class CHPPoller {
     const startTime = Date.now();
     
     try {
-      const limit = options?.limit || 5000;
-      const startDate = options?.startDate || '2026-01-01';
-      const endDate = options?.endDate || new Date().toISOString().split('T')[0];
+      let startDate: Date;
       
-      console.log(`\n🚦 Starting CHP Historical poll at ${new Date().toISOString()}`);
-      console.log(`  Date range: ${startDate} to ${endDate}`);
-      console.log(`  Target: ${limit} records (local counties: Humboldt, Mendocino)`);
-      
-      const result = await this.fetchCollisions({ limit, startDate, endDate });
-      
-      if (!result.success || result.records.length === 0) {
-        console.log(`  ⚠️ No local records found in date range ${startDate} to ${endDate}`);
-        return {
-          success: true,
-          stats: { totalFetched: 0, newCount: 0, duration: Date.now() - startTime, dateRange: { startDate, endDate } },
-          timestamp: new Date().toISOString()
-        };
+      if (options?.startDate) {
+        startDate = new Date(options.startDate);
+        console.log(`\n🚦 MANUAL POLL: Fetching records since ${startDate.toISOString().split('T')[0]}`);
+      } else {
+        const latestInDb = await this.getLatestCollisionDate();
+        if (latestInDb) {
+          startDate = new Date(latestInDb);
+          startDate.setDate(startDate.getDate() + 1);
+          console.log(`\n🚦 INCREMENTAL POLL: Fetching records since ${startDate.toISOString().split('T')[0]}`);
+        } else {
+          console.log(`\n⚠️ No data in database. Please run the backfill script first.`);
+          return { success: false, error: 'No data in database. Run backfill script first.' };
+        }
       }
       
-      console.log(`  Processing ${result.records.length} local records...`);
+      const limit = options?.limit || 1000;
+      
+      console.log(`  Fetching up to ${limit} records...`);
+      
+      const records = await this.fetchNewRecords(startDate, limit);
+      
+      const localCounties = ['12', '23'];
+      const localRecords = records.filter(record => 
+        localCounties.includes(String(record['County Code']))
+      );
+      
+      console.log(`  Found ${records.length} records since ${startDate.toISOString().split('T')[0]}`);
+      console.log(`  Local county records: ${localRecords.length}`);
       
       let newCount = 0;
-      let updatedCount = 0;
-      let skippedCount = 0;
-      
-      for (const record of result.records) {
+      for (const record of localRecords) {
         const result = await this.upsertCollision(record);
         if (result === 'new') newCount++;
-        else if (result === 'updated') updatedCount++;
-        else skippedCount++;
       }
       
       const duration = Date.now() - startTime;
       this.lastPollTime = new Date();
       this.lastPollStats = { 
-        totalFetched: result.records.length, 
+        totalFetched: records.length,
+        localRecords: localRecords.length,
         newCount, 
-        updatedCount, 
-        skippedCount, 
         duration,
-        dateRange: { startDate, endDate }
+        sinceDate: startDate.toISOString().split('T')[0]
       };
       
-      console.log(`✅ CHP Historical Poll complete: ${newCount} new, ${updatedCount} updated, ${skippedCount} skipped`);
+      console.log(`✅ CHP Historical Poll complete: ${newCount} new records in ${duration}ms`);
       
       return {
         success: true,
@@ -216,9 +169,9 @@ export class CHPPoller {
         timestamp: new Date().toISOString()
       };
       
-    } catch (error) {
-      console.error('CHP Historical Polling error:', error);
-      return { success: false, error: String(error) };
+    } catch (error: any) {
+      console.error('Polling error:', error);
+      return { success: false, error: error.message };
     } finally {
       this.pollingActive = false;
     }
@@ -247,10 +200,17 @@ export class CHPPoller {
       .groupBy(chpCollisions.collisionYear)
       .orderBy(sql`year DESC`);
     
+    const latest = await db
+      .select({ latestDate: chpCollisions.collisionDate })
+      .from(chpCollisions)
+      .orderBy(desc(chpCollisions.collisionDate))
+      .limit(1);
+    
     return {
       total: total[0]?.count || 0,
       bySeverity: bySeverity,
       byYear: byYear,
+      latestDate: latest[0]?.latestDate,
       lastPoll: this.lastPollTime,
       lastPollStats: this.lastPollStats
     };

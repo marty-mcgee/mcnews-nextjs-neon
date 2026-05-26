@@ -1,6 +1,6 @@
 # Project Context – mcnews-nextjs-neon
 
-**Last Updated: May 25, 2026 @ 05:30pm PST**
+**Last Updated: May 26, 2026 @ 07:30am PST**
 
 ---
 
@@ -534,6 +534,102 @@ Your `CONTEXT.md` is **production-grade documentation**. Any future AI session (
 - **Concurrent fetch blocking:** `isFetching` ref prevents overlapping requests
 - **React Strict Mode:** Handles double-mounting gracefully
 - **Unique keys:** Fallback IDs when primary ID is undefined
+
+---
+
+## 🔄 CHP Historical Poller - Backfill + Incremental
+
+### Architecture
+- **One-time backfill script** (`scripts/backfill-chp-historical.ts`) imports all historical data
+- **Simple incremental poller** only fetches records since the latest date in database
+- **Local counties only:** Humboldt (12) and Mendocino (23)
+
+### Usage
+```bash
+# Backfill (run once)
+bun run src/lib/scripts/backfill-chp-historical.ts
+
+# Incremental polling
+curl "http://localhost:3000/api/chp-historical/poll?action=poll"
+
+## 🚀 Next Steps
+
+Your CHP Historical Poller is now:
+- ✅ Backfilled with all historical data
+- ✅ Configured for incremental updates
+- ✅ Ready for production cron jobs (once per day is sufficient)
+
+The 775 local records from 2026 are now available for your dashboard and maps!
+
+---
+
+---
+
+## 🗺️ CHP Historical Dashboard - Pagination & Map Synchronization (May 26, 2026)
+
+### Feature Overview
+The CHP Historical dashboard now features **dual pagination controls** (top and bottom of table) with **map synchronization** — the map only shows markers for the currently visible page of records.
+
+### Key UX Improvements
+
+| Feature | Implementation |
+|---------|----------------|
+| **Dual Pagination** | Previous/Next buttons at both top and bottom of the table |
+| **Map Stays Visible** | Page changes do NOT auto-scroll — map remains in view |
+| **Map Synchronization** | Map markers update to show only current page collisions |
+| **Performance** | Map renders ≤50 markers per page instead of all 775 |
+| **Reusable Component** | `PaginationControls` used at both top and bottom |
+
+### User Benefits
+- **No scrolling** — Users can change pages without scrolling past the map
+- **Visual correlation** — Table rows match exactly what is on the map
+- **Fast navigation** — Map updates instantly on page change
+- **Better performance** — Map loads faster with fewer markers
+
+### Technical Implementation
+
+```tsx
+// Pagination state
+const [currentPage, setCurrentPage] = useState(0);
+const pageSize = 50;
+const totalPages = Math.ceil(totalRecords / pageSize);
+
+// Map shows only current page markers
+const currentPageData = getCurrentPageData();
+const mapEvents = currentPageWithCoords.map(c => ({...}));
+
+// No auto-scroll on page change
+const handlePageChange = (newPage: number) => {
+  setCurrentPage(newPage);
+  // Map stays visible - no automatic scrolling
+};
+
+## 📋 Full Updated `CONTEXT.md` Structure (For Reference)
+
+Your `CONTEXT.md` now includes:
+
+1. **Tech Stack** - Next.js, Neon, Drizzle, shadcn/ui, Leaflet
+2. **Data Sources** - 5 sources with methods and status
+3. **Main Dashboard** - Layer toggle cards, eye icons, show/hide all
+4. **Service Dashboards** - 4 dashboards with expandable rows
+5. **API Routes** - Cron jobs, polling endpoints, showAll parameter
+6. **Database Schema** - 7 key tables
+7. **UI Components** - shadcn/ui components
+8. **Known Issues & Solutions** - 502 errors, CKAN limitation
+9. **Polling Control & Optimization** - Unified endpoint, cron management
+10. **CHP Historical Improvements** - Backfill script, incremental polling
+11. **CHP Historical Dashboard Pagination** - Dual pagination, map sync ← **NEW**
+
+## 🚀 Next Steps (Optional)
+
+You could apply the same pagination pattern to:
+- **511.org Dashboard** - Events table with map sync
+- **Caltrans Dashboard** - Lane closures table
+- **CHP Live Dashboard** - Incidents table
+
+But your current implementation for CHP Historical is a great template to reference!
+
+Would you like me to help you apply this pagination pattern to the other dashboards as well?
 
 ---
 

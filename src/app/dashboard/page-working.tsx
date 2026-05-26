@@ -1,10 +1,10 @@
 // src/app/dashboard/page.tsx
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { RefreshCw, Filter, X, Car, Radio, AlertTriangle, Calendar, MapPin, Download, Globe, Eye, EyeOff, Layers, ChevronLeft, ChevronRight } from 'lucide-react';
+import { RefreshCw, Filter, X, Car, Radio, AlertTriangle, Calendar, MapPin, Download, Globe, Eye, EyeOff, Layers } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -47,34 +47,6 @@ interface LayerConfig {
   count: number;
 }
 
-// Pagination Controls Component
-function PaginationControls({ currentPage, totalPages, totalRecords, pageSize, onPageChange }: { 
-  currentPage: number; 
-  totalPages: number; 
-  totalRecords: number; 
-  pageSize: number; 
-  onPageChange: (page: number) => void;
-}) {
-  return (
-    <div className="flex justify-between items-center px-4 py-3 border-t bg-muted/30">
-      <Button variant="outline" size="sm" onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 0}>
-        <ChevronLeft className="w-4 h-4 mr-1" />
-        Previous
-      </Button>
-      <span className="text-sm text-muted-foreground">
-        Page {currentPage + 1} of {totalPages}
-        <span className="hidden sm:inline ml-2">
-          ({totalRecords} total events)
-        </span>
-      </span>
-      <Button variant="outline" size="sm" onClick={() => onPageChange(currentPage + 1)} disabled={(currentPage + 1) * pageSize >= totalRecords}>
-        Next
-        <ChevronRight className="w-4 h-4 ml-1" />
-      </Button>
-    </div>
-  );
-}
-
 export default function DashboardPage() {
   const router = useRouter();
   const { showToast, ToastComponent } = useToast();
@@ -98,11 +70,6 @@ export default function DashboardPage() {
     { id: 'caltrans', name: 'Caltrans', icon: <Car className="w-4 h-4" />, color: 'blue', bgColor: 'bg-blue-50 dark:bg-blue-950/30', activeColor: 'text-blue-600 dark:text-blue-400', activeBgColor: 'bg-blue-100 dark:bg-blue-900/50', enabled: true, count: 0 },
     { id: 'chp-historical', name: 'Historical', icon: <Calendar className="w-4 h-4" />, color: 'purple', bgColor: 'bg-purple-50 dark:bg-purple-950/30', activeColor: 'text-purple-600 dark:text-purple-400', activeBgColor: 'bg-purple-100 dark:bg-purple-900/50', enabled: false, count: 0 },
   ]);
-
-  // Pagination state for table
-  const [currentPage, setCurrentPage] = useState(0);
-  const [pageSize] = useState(25);
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const fetchAllData = useCallback(async () => {
     try {
@@ -293,40 +260,7 @@ export default function DashboardPage() {
     showToast('Export complete', 'success');
   };
 
-  // Add after exportToCSV function
-  const getCurrentPageData = () => {
-    const start = currentPage * pageSize;
-    const end = start + pageSize;
-    return filteredEvents.slice(start, end);
-  };
-
-  const totalPages = Math.ceil(filteredEvents.length / pageSize);
-
-  const handlePageChange = (newPage: number) => {
-    setCurrentPage(newPage);
-  };
-
-  const toggleRowExpansion = (id: string) => {
-    const newExpanded = new Set(expandedRows);
-    if (newExpanded.has(id)) newExpanded.delete(id);
-    else newExpanded.add(id);
-    setExpandedRows(newExpanded);
-  };
-
-  const getSourceBadge = (source: string) => {
-    switch (source) {
-      case 'caltrans': return 'bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300';
-      case 'bayarea511': return 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300';
-      case 'chp-live': return 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300';
-      case 'chp-historical': return 'bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300';
-      default: return 'bg-gray-100 dark:bg-gray-800';
-    }
-  };
-
-  const currentPageData = getCurrentPageData();
-  const currentPageWithCoords = currentPageData.filter(e => e.latitude && e.longitude);
-
-  const mapEvents = currentPageWithCoords.map(e => ({
+  const mapEvents = filteredEvents.filter(e => e.latitude && e.longitude).map(e => ({
     id: e.id,
     latitude: e.latitude,
     longitude: e.longitude,
@@ -335,6 +269,14 @@ export default function DashboardPage() {
     description: e.description,
     onClick: () => router.push(`/dashboard/${e.source === 'bayarea511' ? '511org' : e.source}`),
   }));
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-96">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   const totalEvents = filteredEvents.length;
   const totalMapEvents = mapEvents.length;
@@ -347,12 +289,8 @@ export default function DashboardPage() {
       <div className="flex flex-wrap justify-between items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Traffic Map</h1>
-          {/* <p className="text-sm text-muted-foreground">
-            {totalEvents} events on map • {totalMapEvents} markers visible
-            {lastUpdated && ` • Updated ${lastUpdated.toLocaleTimeString()}`}
-          </p> */}
           <p className="text-sm text-muted-foreground">
-            {filteredEvents.length} total events • {currentPageData.length} on this page • {currentPageWithCoords.length} on map
+            {totalEvents} events on map • {totalMapEvents} markers visible
             {lastUpdated && ` • Updated ${lastUpdated.toLocaleTimeString()}`}
           </p>
         </div>
@@ -531,114 +469,6 @@ export default function DashboardPage() {
             </div>
           )}
         </CardContent>
-      </Card>
-
-            {/* Events Table */}
-      <Card>
-        {totalPages > 1 && (
-          <PaginationControls
-            currentPage={currentPage}
-            totalPages={totalPages}
-            totalRecords={filteredEvents.length}
-            pageSize={pageSize}
-            onPageChange={handlePageChange}
-          />
-        )}
-        
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-muted/50 border-b">
-              <tr>
-                <th className="px-4 py-3 w-8"></th>
-                <th className="px-4 py-3 text-left text-xs uppercase text-muted-foreground">Source</th>
-                <th className="px-4 py-3 text-left text-xs uppercase text-muted-foreground">Type</th>
-                <th className="px-4 py-3 text-left text-xs uppercase text-muted-foreground">Location</th>
-                <th className="px-4 py-3 text-left text-xs uppercase text-muted-foreground">Date</th>
-                <th className="px-4 py-3 text-left text-xs uppercase text-muted-foreground">Severity</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {currentPageData.map((event) => (
-                <React.Fragment key={event.id}>
-                  <tr className="hover:bg-muted/50 cursor-pointer" onClick={() => toggleRowExpansion(event.id)}>
-                    <td className="px-4 py-3 text-center">
-                      <button className="text-muted-foreground hover:text-foreground">
-                        {/* <Info className="w-4 h-4" /> */}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 text-xs rounded-full ${getSourceBadge(event.source)}`}>
-                        {event.source === 'caltrans' ? 'Caltrans' : 
-                         event.source === 'bayarea511' ? '511.org' : 
-                         event.source === 'chp-live' ? 'CHP Live' : 'CHP Historical'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm">{event.type}</td>
-                    <td className="px-4 py-3 text-sm">{event.location?.substring(0, 50)}</td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">
-                      {event.timestamp ? new Date(event.timestamp).toLocaleDateString() : 'N/A'}
-                    </td>
-                    <td className="px-4 py-3">
-                      {event.severity && (
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          event.severity === 'active' ? 'bg-green-100 text-green-800' :
-                          event.severity === 'Fatal' ? 'bg-red-100 text-red-800' :
-                          event.severity === 'Injury' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {event.severity}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                  {expandedRows.has(event.id) && (
-                    <tr className="bg-muted/30">
-                      <td colSpan={6} className="px-4 py-3">
-                        <div className="text-sm space-y-2">
-                          <div>
-                            <p className="font-medium text-foreground">Description</p>
-                            <p className="text-muted-foreground">{event.description || 'No description available'}</p>
-                          </div>
-                          <div>
-                            <p className="font-medium text-foreground">Coordinates</p>
-                            <p className="text-muted-foreground font-mono text-xs">
-                              {event.latitude.toFixed(6)}, {event.longitude.toFixed(6)}
-                            </p>
-                          </div>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => router.push(`/dashboard/${event.source === 'bayarea511' ? '511org' : event.source}`)}
-                          >
-                            View full details →
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        
-        {totalPages > 1 && (
-          <PaginationControls
-            currentPage={currentPage}
-            totalPages={totalPages}
-            totalRecords={filteredEvents.length}
-            pageSize={pageSize}
-            onPageChange={handlePageChange}
-          />
-        )}
-        
-        {filteredEvents.length === 0 && !loading && (
-          <div className="text-center py-12 text-muted-foreground">
-            <MapPin className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>No events match your filters</p>
-            <p className="text-sm mt-1">Try adjusting your filter settings or toggling data layers</p>
-          </div>
-        )}
       </Card>
     </div>
   );

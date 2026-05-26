@@ -1,6 +1,6 @@
 {
   "name": "mcnews-nextjs-neon",
-  "version": "0.5.13",
+  "version": "0.5.14 ",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -10,10 +10,6 @@
     "db:migrate": "echo 'Use db:push for development'",
     "db:push": "drizzle-kit push --strict --verbose --force",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "curl -X GET http://localhost:3000/api/caltrans/seed",
-    "db:poll": "curl -X GET http://localhost:3000/api/caltrans/poll?action=poll",
-    "db:status": "curl -X GET http://localhost:3000/api/caltrans/poll?action=status",
-    "db:cleanup": "curl -X GET http://localhost:3000/api/caltrans/poll?action=cleanup",
     "auth:generate": "npx @better-auth/cli@latest generate --config src/lib/auth/server.ts --output src/lib/auth/schema.ts"
   },
   "dependencies": {

@@ -1,9 +1,10 @@
-// src/lib/services/CalFirePoller.ts
+// src/lib/services/CalFirePoller.ts - Updated to fetch both active and inactive
+
 import { db } from '@/lib/db/client';
 import { calfireIncidents } from '@/lib/auth/schema';
 import { eq, sql } from 'drizzle-orm';
 
-// Northern California counties to monitor
+// Northern California counties to monitor (including test counties)
 const NORTHERN_CA_COUNTIES = [
   'Mendocino', 'Humboldt', 'Lake', 'Sonoma', 'Napa', 'Marin',
   'Solano', 'Contra Costa', 'Alameda', 'Santa Clara', 'San Mateo',
@@ -12,8 +13,8 @@ const NORTHERN_CA_COUNTIES = [
   'Modoc', 'Lassen', 'Plumas', 'Sierra', 'Nevada', 'Colusa',
   'Glenn', 'Sutter', 'Yuba', 'Amador', 'Calaveras', 'Tuolumne',
   'Mariposa', 'Merced', 'Stanislaus', 'San Joaquin',
-  // for testing, use Souther California Counties, as well
-  'Riverside', 'Santa Barbara', 'Ventura', 'Los Angeles'
+  // Test counties
+  'Riverside', 'Santa Barbara', 'Ventura'
 ];
 
 export class CalFirePoller {
@@ -24,8 +25,7 @@ export class CalFirePoller {
   private lastPollStats: any = null;
 
   /**
-   * Fetch incidents from CalFire API
-   * @param includeInactive - If true, fetch both active and inactive incidents
+   * Fetch incidents from CalFire API - can fetch both active and inactive
    */
   private async fetchIncidents(includeInactive: boolean = false): Promise<any[]> {
     const url = `${this.baseUrl}?inactive=${includeInactive}`;
@@ -33,6 +33,7 @@ export class CalFirePoller {
     try {
       console.log(`[${new Date().toISOString()}] Fetching CalFire incidents...`);
       console.log(`  URL: ${url}`);
+      console.log(`  Include inactive: ${includeInactive}`);
       
       const response = await fetch(url, {
         headers: { 'User-Agent': 'MCNews-CalFire-Poller/1.0' }
@@ -64,20 +65,32 @@ export class CalFirePoller {
   }
 
   /**
-   * Extract Northern California counties from all incidents
+   * Fetch and save ALL incidents (both active and inactive)
    */
-  private isNorthernCalifornia(county: string): boolean {
-    return NORTHERN_CA_COUNTIES.includes(county);
+  private async fetchAndSaveAll(includeInactive: boolean): Promise<{ total: number; new: number; updated: number; closed: number }> {
+    const incidents = await this.fetchIncidents(includeInactive);
+    
+    let newCount = 0;
+    let updatedCount = 0;
+    let closedCount = 0;
+    
+    for (const incident of incidents) {
+      const result = await this.upsertIncident(incident);
+      if (result === 'new') newCount++;
+      else if (result === 'updated') updatedCount++;
+      else if (result === 'closed') closedCount++;
+    }
+    
+    return { total: incidents.length, new: newCount, updated: updatedCount, closed: closedCount };
   }
 
   /**
    * Upsert a single incident
    */
-  private async upsertIncident(incident: any): Promise<'new' | 'updated' | 'closed'> {
+  private async upsertIncident(incident: any): Promise<'new' | 'updated' | 'closed' | 'skipped'> {
     const uniqueId = incident.UniqueId;
     
     if (!uniqueId) {
-      console.log('  Skipping incident with no UniqueId');
       return 'skipped';
     }
     
@@ -87,23 +100,27 @@ export class CalFirePoller {
       .where(eq(calfireIncidents.uniqueId, uniqueId))
       .limit(1);
     
+    const isActive = incident.IsActive === true;
+    const percentContained = incident.PercentContained ? parseFloat(incident.PercentContained) : null;
+    const isExtinguished = !isActive || percentContained === 100;
+    
     const incidentData = {
       uniqueId: uniqueId,
       name: incident.Name || 'Unknown',
       type: incident.Type || 'Wildfire',
-      status: incident.Final ? 'final' : 'active',
+      status: isExtinguished ? 'extinguished' : (isActive ? 'active' : 'inactive'),
       county: incident.County,
       location: incident.Location,
       latitude: incident.Latitude ? parseFloat(incident.Latitude) : null,
       longitude: incident.Longitude ? parseFloat(incident.Longitude) : null,
       acresBurned: incident.AcresBurned ? parseFloat(incident.AcresBurned) : null,
-      percentContained: incident.PercentContained ? parseFloat(incident.PercentContained) : null,
+      percentContained: percentContained,
       startedAt: incident.Started ? new Date(incident.Started) : null,
       updatedAt: incident.Updated ? new Date(incident.Updated) : null,
       extinguishedAt: incident.ExtinguishedDate ? new Date(incident.ExtinguishedDate) : null,
       adminUnit: incident.AdminUnit,
       url: incident.Url,
-      isActive: incident.IsActive === true,
+      isActive: isActive,
       isCalFireIncident: incident.CalFireIncident === true,
       rawData: incident,
       lastSeen: new Date(),
@@ -111,17 +128,14 @@ export class CalFirePoller {
     
     try {
       if (existing.length > 0) {
-        // Check if incident was active but now extinguished
-        const wasActive = existing[0].isActive;
-        const isNowActive = incident.IsActive === true;
-        
         await db.update(calfireIncidents).set({
           ...incidentData,
           lastSeen: new Date(),
         }).where(eq(calfireIncidents.uniqueId, uniqueId));
         
-        // Return 'closed' if status changed from active to inactive
-        if (wasActive && !isNowActive) {
+        // Check if status changed from active to inactive
+        const wasActive = existing[0].isActive;
+        if (wasActive && !isActive) {
           return 'closed';
         }
         return 'updated';
@@ -136,7 +150,7 @@ export class CalFirePoller {
   }
 
   /**
-   * Poll all active incidents
+   * Poll ONLY active incidents (for quick updates)
    */
   async pollActive(): Promise<{ success: boolean; stats?: any; error?: string }> {
     if (this.pollingActive) {
@@ -149,35 +163,21 @@ export class CalFirePoller {
     try {
       console.log(`\n🔥 Starting CalFire Active Incidents poll at ${new Date().toISOString()}`);
       
-      const incidents = await this.fetchIncidents(false);
-      
-      let newCount = 0;
-      let updatedCount = 0;
-      let closedCount = 0;
-      let skippedCount = 0;
-      
-      for (const incident of incidents) {
-        const result = await this.upsertIncident(incident);
-        if (result === 'new') newCount++;
-        else if (result === 'updated') updatedCount++;
-        else if (result === 'closed') closedCount++;
-        else skippedCount++;
-      }
+      const result = await this.fetchAndSaveAll(false);
       
       const duration = Date.now() - startTime;
       this.lastPollTime = new Date();
       this.lastPollStats = { 
-        totalFetched: incidents.length, 
-        newCount, 
-        updatedCount,
-        closedCount,
-        skippedCount,
+        totalFetched: result.total, 
+        newCount: result.new, 
+        updatedCount: result.updated,
+        closedCount: result.closed,
         duration,
         type: 'active'
       };
       
       console.log(`✅ CalFire Active Poll complete:`);
-      console.log(`  ${incidents.length} active incidents, ${newCount} new, ${updatedCount} updated, ${closedCount} closed`);
+      console.log(`  ${result.total} active incidents, ${result.new} new, ${result.updated} updated, ${result.closed} closed`);
       console.log(`  Duration: ${duration}ms`);
       
       return {
@@ -195,49 +195,34 @@ export class CalFirePoller {
   }
 
   /**
-   * Poll all incidents (including inactive) - for backfill
+   * Poll ALL incidents (including inactive) - for backfill or full sync
    */
-  async pollAll(options?: { includeInactive?: boolean }): Promise<{ success: boolean; stats?: any; error?: string }> {
+  async pollAll(): Promise<{ success: boolean; stats?: any; error?: string }> {
     if (this.pollingActive) {
       return { success: false, error: 'Polling already in progress' };
     }
     
     this.pollingActive = true;
     const startTime = Date.now();
-    const includeInactive = options?.includeInactive || false;
     
     try {
-      console.log(`\n🔥 Starting CalFire ${includeInactive ? 'Full' : 'Incident'} poll at ${new Date().toISOString()}`);
+      console.log(`\n🔥 Starting CalFire Full Poll (including inactive) at ${new Date().toISOString()}`);
       
-      const incidents = await this.fetchIncidents(includeInactive);
-      
-      let newCount = 0;
-      let updatedCount = 0;
-      let closedCount = 0;
-      let skippedCount = 0;
-      
-      for (const incident of incidents) {
-        const result = await this.upsertIncident(incident);
-        if (result === 'new') newCount++;
-        else if (result === 'updated') updatedCount++;
-        else if (result === 'closed') closedCount++;
-        else skippedCount++;
-      }
+      const result = await this.fetchAndSaveAll(true);
       
       const duration = Date.now() - startTime;
       this.lastPollTime = new Date();
       this.lastPollStats = { 
-        totalFetched: incidents.length, 
-        newCount, 
-        updatedCount,
-        closedCount,
-        skippedCount,
+        totalFetched: result.total, 
+        newCount: result.new, 
+        updatedCount: result.updated,
+        closedCount: result.closed,
         duration,
-        type: includeInactive ? 'full' : 'active'
+        type: 'full'
       };
       
-      console.log(`✅ CalFire Poll complete:`);
-      console.log(`  ${incidents.length} incidents, ${newCount} new, ${updatedCount} updated, ${closedCount} closed`);
+      console.log(`✅ CalFire Full Poll complete:`);
+      console.log(`  ${result.total} total incidents, ${result.new} new, ${result.updated} updated, ${result.closed} closed`);
       console.log(`  Duration: ${duration}ms`);
       
       return {
@@ -264,6 +249,11 @@ export class CalFirePoller {
       .from(calfireIncidents)
       .where(eq(calfireIncidents.isActive, true));
     
+    const inactive = await db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(calfireIncidents)
+      .where(eq(calfireIncidents.isActive, false));
+    
     const byCounty = await db
       .select({
         county: calfireIncidents.county,
@@ -282,6 +272,7 @@ export class CalFirePoller {
     return {
       total: total[0]?.count || 0,
       active: active[0]?.count || 0,
+      inactive: inactive[0]?.count || 0,
       byCounty: byCounty,
       totalActiveAcres: totalAcres[0]?.sum || 0,
       lastPoll: this.lastPollTime,

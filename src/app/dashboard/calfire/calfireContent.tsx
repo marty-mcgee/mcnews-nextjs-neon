@@ -118,10 +118,13 @@ export default function CalFireContent() {
   const [pageSize] = useState(25);
   const [totalRecords, setTotalRecords] = useState(0);
 
+  // Add to state declarations
+  const [showInactive, setShowInactive] = useState(true);
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/calfire?limit=500&showAll=true`);
+      const response = await fetch(`/api/calfire?limit=500&showAll=${showInactive}`);
       const data = await response.json();
       if (data.success) {
         setAllIncidents(data.data);
@@ -134,7 +137,7 @@ export default function CalFireContent() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showInactive]);
 
   const pollData = async () => {
     setIsPolling(true);
@@ -202,7 +205,8 @@ export default function CalFireContent() {
   const containedCount = allIncidents.filter(i => i.percentContained === 100).length;
   const totalAcres = allIncidents.filter(i => i.isActive === true).reduce((sum, i) => sum + (i.acresBurned || 0), 0);
   const uniqueCounties = [...new Set(allIncidents.map(i => i.county).filter(Boolean))].sort();
-
+  const inactiveCount = allIncidents.filter(i => i.isActive === false).length;
+  
   const getStatusBadge = (incident: CalFireIncident) => {
     if (!incident.isActive) return 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400';
     if (incident.percentContained === 100) return 'bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-400';
@@ -243,6 +247,16 @@ export default function CalFireContent() {
         </div>
         
         <div className="flex flex-wrap gap-2">
+
+          <Button 
+            variant={showInactive ? "secondary" : "outline"} 
+            size="sm" 
+            onClick={() => setShowInactive(!showInactive)}
+            >
+            <Activity className="w-3.5 h-3.5 mr-1.5" />
+            {showInactive ? 'Showing All' : 'Active Only'}
+          </Button>
+
           <Button variant={showFilters ? "secondary" : "outline"} size="sm" onClick={() => setShowFilters(!showFilters)}>
             <Filter className="w-3.5 h-3.5 mr-1.5" />
             Filter
@@ -295,6 +309,7 @@ export default function CalFireContent() {
         <Card><CardContent className="p-3"><div className="flex justify-between"><div><p className="text-xs text-muted-foreground">Total Acres</p><p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{formatAcres(totalAcres)}</p></div><TrendingUp className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
         <Card><CardContent className="p-3"><div className="flex justify-between"><div><p className="text-xs text-muted-foreground">Counties</p><p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{uniqueCounties.length}</p></div><MapPin className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
         <Card><CardContent className="p-3"><div className="flex justify-between"><div><p className="text-xs text-muted-foreground">On Map</p><p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{currentPageWithCoords.length}</p></div><MapPin className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
+        <Card><CardContent className="p-3"><div className="flex justify-between"><div><p className="text-xs text-muted-foreground">Inactive</p><p className="text-2xl font-bold text-gray-600 dark:text-gray-400">{inactiveCount}</p></div><Activity className="w-5 h-5 text-muted-foreground" /></div></CardContent></Card>
       </div>
 
       {showMap && (

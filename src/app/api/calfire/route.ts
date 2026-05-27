@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { calfireIncidents } from '@/lib/auth/schema';
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +16,7 @@ export async function GET(request: Request) {
       .select()
       .from(calfireIncidents);
     
+    // If showAll is false, only show active incidents
     if (!showAll) {
       query = query.where(eq(calfireIncidents.isActive, true));
     }

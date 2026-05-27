@@ -14,18 +14,18 @@ export async function GET(request: Request) {
   try {
     switch (action) {
       case 'poll':
-        console.log(`Starting CalFire poll...`);
+        console.log(`Starting CalFire active poll...`);
         const result = await poller.pollActive();
         return NextResponse.json({
           success: result.success,
-          message: result.success ? 'CalFire poll completed' : 'Poll failed',
+          message: result.success ? 'CalFire active poll completed' : 'Poll failed',
           stats: result.stats,
           timestamp: new Date().toISOString()
         });
         
       case 'poll-all':
         console.log(`Starting CalFire full poll (including inactive)...`);
-        const fullResult = await poller.pollAll({ includeInactive: true });
+        const fullResult = await poller.pollAll();
         return NextResponse.json({
           success: fullResult.success,
           message: fullResult.success ? 'CalFire full poll completed' : 'Poll failed',

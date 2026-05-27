@@ -478,7 +478,7 @@ export default function DashboardPage() {
       )}
 
       {/* Layer Toggle Cards - Color coded, click to show/hide markers */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-5 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-6 gap-2">
         {/* Layer Toggle Buttons */}
         {layers.map((layer) => (
           <button

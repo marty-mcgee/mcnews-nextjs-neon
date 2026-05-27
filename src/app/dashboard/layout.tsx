@@ -16,12 +16,12 @@ import { Badge } from '@/components/ui/badge';
 export const dynamic = 'force-dynamic';
 
 const tabs = [
-  { path: '/dashboard', name: 'Overview', icon: MapPin, color: 'blue' },
-  { path: '/dashboard/chp-live', name: 'CHP Live', icon: AlertTriangle, color: 'red' },
-  { path: '/dashboard/511org', name: 'Bay Area 511', icon: Radio, color: 'emerald' },
-  { path: '/dashboard/caltrans', name: 'Caltrans', icon: Car, color: 'blue' },
-  { path: '/dashboard/calfire', name: 'CalFire', icon: Flame, color: 'orange' },
-  { path: '/dashboard/chp-historical', name: 'CHP Historical', icon: BarChart3, color: 'purple' },
+  { path: '/dashboard', name: 'Overview', icon: <MapPin className="w-4 h-4 text-blue-500" />, color: 'blue' },
+  { path: '/dashboard/chp-live', name: 'CHP Live', icon: <AlertTriangle className="w-4 h-4 text-red-500" />, color: 'red' },
+  { path: '/dashboard/511org', name: 'Bay Area 511', icon: <Radio className="w-4 h-4 text-emerald-500" />, color: 'emerald' },
+  { path: '/dashboard/caltrans', name: 'Caltrans', icon: <Car className="w-4 h-4 text-blue-500" />, color: 'blue' },
+  { path: '/dashboard/calfire', name: 'CalFire', icon: <Flame className="w-4 h-4 text-orange-500" />, color: 'orange' },
+  { path: '/dashboard/chp-historical', name: 'CHP Historical', icon: <BarChart3 className="w-4 h-4 text-purple-500" />, color: 'purple' },
 ];
 
 const getTabColor = (color: string) => {
@@ -113,7 +113,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 `}
               >
                 <Link href={tab.path} className="flex items-center gap-2">
-                  <tab.icon className="w-4 h-4" />
+                  {tab.icon}
                   <span className="hidden sm:inline">{tab.name}</span>
                   {/* Optional: Add active indicator dot */}
                   {pathname === tab.path && (

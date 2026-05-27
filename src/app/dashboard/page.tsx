@@ -479,6 +479,20 @@ export default function DashboardPage() {
 
       {/* Layer Toggle Cards - Color coded, click to show/hide markers */}
       <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-6 gap-2">
+        {/* Total Events Card */}
+        <Card className="text-center hover:shadow-md transition-shadow">
+          <CardContent className="p-1">
+            <p className="text-3xl font-bold text-foreground">{totalEvents}</p>
+            <p className="text-xs text-muted-foreground">Current Events</p>
+            {/* <p className="text-xs text-muted-foreground mt-1">{totalMapEvents} on map</p> */}
+            <div className="flex items-center justify-center gap-1 mt-1">
+              <Eye className="w-3 h-3 text-green-500" />
+              <span className="text-xs text-muted-foreground">
+                  Visible
+              </span>
+            </div>
+          </CardContent>
+        </Card>
         {/* Layer Toggle Buttons */}
         {layers.map((layer) => (
           <button
@@ -513,20 +527,6 @@ export default function DashboardPage() {
             </div>
           </button>
         ))}
-        {/* Total Events Card */}
-        <Card className="text-center hover:shadow-md transition-shadow">
-          <CardContent className="p-1">
-            <p className="text-3xl font-bold text-foreground">{totalEvents}</p>
-            <p className="text-xs text-muted-foreground">Current Events</p>
-            {/* <p className="text-xs text-muted-foreground mt-1">{totalMapEvents} on map</p> */}
-            <div className="flex items-center justify-center gap-1 mt-1">
-              <Eye className="w-3 h-3 text-green-500" />
-              <span className="text-xs text-muted-foreground">
-                  Visible
-              </span>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Map Legend */}

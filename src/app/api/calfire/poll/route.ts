@@ -24,12 +24,22 @@ export async function GET(request: Request) {
         });
         
       case 'poll-all':
-        console.log(`Starting CalFire full poll (including inactive)...`);
-        const fullResult = await poller.pollAll();
+        console.log(`Starting CalFire UNFILTERED full poll (including all incidents, no county filter)...`);
+        const fullResult = await poller.pollAllUnfiltered();
         return NextResponse.json({
           success: fullResult.success,
-          message: fullResult.success ? 'CalFire full poll completed' : 'Poll failed',
+          message: fullResult.success ? 'CalFire UNFILTERED full poll completed' : 'Poll failed',
           stats: fullResult.stats,
+          timestamp: new Date().toISOString()
+        });
+        
+      case 'poll-norcal':
+        console.log(`Starting CalFire NorCal filtered poll...`);
+        const norcalResult = await poller.pollAll();
+        return NextResponse.json({
+          success: norcalResult.success,
+          message: norcalResult.success ? 'CalFire NorCal poll completed' : 'Poll failed',
+          stats: norcalResult.stats,
           timestamp: new Date().toISOString()
         });
         
@@ -43,7 +53,7 @@ export async function GET(request: Request) {
         });
         
       default:
-        return NextResponse.json({ error: 'Invalid action. Use "poll", "poll-all", or "stats"' }, { status: 400 });
+        return NextResponse.json({ error: 'Invalid action. Use "poll", "poll-all", "poll-norcal", or "stats"' }, { status: 400 });
     }
   } catch (error) {
     console.error('CalFire API Error:', error);

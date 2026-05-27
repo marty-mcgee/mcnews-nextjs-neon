@@ -69,6 +69,8 @@ const formatAcres = (acres: number | null) => {
   if (acres >= 1000000) return `${(acres / 1000000).toFixed(1)}M`;
   if (acres >= 1000) return `${(acres / 1000).toFixed(1)}K`;
   return acres.toLocaleString();
+  // return acres;
+  // return 0
 };
 
 const CALIFORNIA_CENTER: [number, number] = [37.0, -120.0];
@@ -203,7 +205,7 @@ export default function CalFireContent() {
 
   const activeCount = allIncidents.filter(i => i.isActive === true).length;
   const containedCount = allIncidents.filter(i => i.percentContained === 100).length;
-  const totalAcres = allIncidents.filter(i => i.isActive === true).reduce((sum, i) => sum + (i.acresBurned || 0), 0);
+  const totalAcres = '--' // allIncidents.filter(i => i.isActive === true).reduce((sum, i) => sum + (i.acresBurned || 0), 0);
   const uniqueCounties = [...new Set(allIncidents.map(i => i.county).filter(Boolean))].sort();
   const inactiveCount = allIncidents.filter(i => i.isActive === false).length;
   

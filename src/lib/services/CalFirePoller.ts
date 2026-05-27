@@ -24,6 +24,8 @@ export class CalFirePoller {
   private lastPollTime: Date | null = null;
   private lastPollStats: any = null;
 
+  // src/lib/services/CalFirePoller.ts - Updated fetchIncidents method
+
   /**
    * Fetch incidents from CalFire API - can fetch both active and inactive
    */
@@ -48,6 +50,14 @@ export class CalFirePoller {
       
       console.log(`  Total incidents from API: ${incidents.length}`);
       
+      // Log county distribution for debugging
+      const countyCounts: Record<string, number> = {};
+      for (const incident of incidents) {
+        const county = incident.County || 'Unknown';
+        countyCounts[county] = (countyCounts[county] || 0) + 1;
+      }
+      console.log(`  Counties in full response:`, Object.keys(countyCounts).slice(0, 10));
+      
       // Filter for Northern California counties
       const northernIncidents = incidents.filter((incident: any) => {
         const county = incident.County;
@@ -56,11 +66,127 @@ export class CalFirePoller {
       
       console.log(`  Northern California incidents: ${northernIncidents.length}`);
       
+      // Log which counties were filtered out
+      const filteredOutCounties = Object.keys(countyCounts).filter(
+        c => !NORTHERN_CA_COUNTIES.includes(c)
+      );
+      if (filteredOutCounties.length > 0) {
+        console.log(`  Filtered out counties: ${filteredOutCounties.slice(0, 10).join(', ')}${filteredOutCounties.length > 10 ? '...' : ''}`);
+      }
+      
       return northernIncidents;
       
     } catch (error) {
       console.error('✗ CalFire API failed:', error);
       return [];
+    }
+  }
+
+  // src/lib/services/CalFirePoller.ts - Add this new method
+
+  /**
+   * Fetch ALL incidents from API without county filtering (for backfill)
+   */
+  private async fetchAllIncidentsUnfiltered(includeInactive: boolean = true): Promise<any[]> {
+    const url = `${this.baseUrl}?inactive=${includeInactive}`;
+    
+    try {
+      console.log(`[${new Date().toISOString()}] Fetching ALL CalFire incidents (unfiltered)...`);
+      console.log(`  URL: ${url}`);
+      console.log(`  Include inactive: ${includeInactive}`);
+      
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'MCNews-CalFire-Poller/1.0' }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const incidents = Array.isArray(data) ? data : [];
+      
+      console.log(`  Total incidents from API (unfiltered): ${incidents.length}`);
+      
+      // Log county distribution
+      const countyCounts: Record<string, number> = {};
+      for (const incident of incidents) {
+        const county = incident.County || 'Unknown';
+        countyCounts[county] = (countyCounts[county] || 0) + 1;
+      }
+      console.log(`  Counties with incidents:`, Object.keys(countyCounts).sort());
+      
+      return incidents;
+      
+    } catch (error) {
+      console.error('✗ CalFire API failed:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Poll ALL incidents without county filtering (for backfill)
+   */
+  async pollAllUnfiltered(): Promise<{ success: boolean; stats?: any; error?: string }> {
+    if (this.pollingActive) {
+      return { success: false, error: 'Polling already in progress' };
+    }
+    
+    this.pollingActive = true;
+    const startTime = Date.now();
+    
+    try {
+      console.log(`\n🔥 Starting CalFire UNFILTERED Full Poll at ${new Date().toISOString()}`);
+      console.log(`  This will fetch ALL incidents (no county filter)`);
+      
+      const incidents = await this.fetchAllIncidentsUnfiltered(true);
+      
+      let newCount = 0;
+      let updatedCount = 0;
+      let closedCount = 0;
+      let skippedCount = 0;
+      
+      for (let i = 0; i < incidents.length; i++) {
+        const incident = incidents[i];
+        const result = await this.upsertIncident(incident);
+        if (result === 'new') newCount++;
+        else if (result === 'updated') updatedCount++;
+        else if (result === 'closed') closedCount++;
+        else skippedCount++;
+        
+        if ((i + 1) % 20 === 0) {
+          console.log(`    Progress: ${i + 1}/${incidents.length} incidents processed`);
+        }
+      }
+      
+      const duration = Date.now() - startTime;
+      this.lastPollTime = new Date();
+      this.lastPollStats = { 
+        totalFetched: incidents.length, 
+        newCount, 
+        updatedCount,
+        closedCount,
+        skippedCount,
+        duration,
+        type: 'unfiltered_full'
+      };
+      
+      console.log(`✅ CalFire Unfiltered Poll complete:`);
+      console.log(`  Total incidents: ${incidents.length}`);
+      console.log(`  New: ${newCount}, Updated: ${updatedCount}, Closed: ${closedCount}, Skipped: ${skippedCount}`);
+      console.log(`  Duration: ${duration}ms`);
+      
+      return {
+        success: true,
+        stats: this.lastPollStats,
+        timestamp: new Date().toISOString()
+      };
+      
+    } catch (error) {
+      console.error('CalFire Unfiltered Polling error:', error);
+      return { success: false, error: String(error) };
+    } finally {
+      this.pollingActive = false;
     }
   }
 

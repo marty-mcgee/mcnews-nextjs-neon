@@ -23,6 +23,7 @@
 | Caltrans CWWP2 | Real-time lane closures | Official JSON API | ✅ Working |
 | Bay Area 511 | Real-time incidents | Official JSON API (511.org) | ✅ Working |
 | Caltrans CCTV | Traffic cameras | Official JSON API | ✅ Working |
+| **CalFire** | **Wildfire incidents** | **Official JSON API** | **✅ Working** |
 
 ---
 
@@ -63,6 +64,7 @@ The main dashboard features **color-coded layer toggle cards** that control map 
 | Caltrans | `/dashboard/caltrans` | District filter, closure details, map view |
 | CHP Live | `/dashboard/chp-live` | Type filter, incident details, map view |
 | CHP Historical | `/dashboard/chp-historical` | Severity/year filters, collision stats, map view |
+| **CalFire** | **`/dashboard/calfire`** | **County/status filters, fire stats, map view, pagination, show inactive toggle** |
 
 ### Common Dashboard Patterns
 - **Expandable table rows** - click row to see full details
@@ -79,22 +81,27 @@ The main dashboard features **color-coded layer toggle cards** that control map 
 | Endpoint | Parameters | Description |
 |----------|------------|-------------|
 | `/api/caltrans/closures/raw` | `?showAll=true` | Lane closures (District 1 by default) |
-| `/api/bay-area-511` | `?showAll=true` | 511.org events (Mendocino by default) |
+| `/api/bay-area-511` | `?showAll=true` | 511.org events (all Bay Area) |
 | `/api/chp-cad` | - | Live CHP incidents (Ukiah/Humboldt only) |
 | `/api/chp-historical/collisions` | `?showAll=true` | Historical collisions (local counties by default) |
+| `/api/dashboard` | `?showAll=true&historical=true` | Unified endpoint for main dashboard |
+| **`/api/calfire`** | **`?showAll=true`** | **Wildfire incidents (active only by default)** |
 
 ### Polling Endpoints
 | Endpoint | Schedule | Description |
 |----------|----------|-------------|
-| `/api/bay-area-511/cron` | Every 5 min | Polls 511.org API |
-| `/api/caltrans/cron` | Every 5 min | Polls Caltrans CWWP2 API |
-| `/api/chp-cad/cron` | Every 10 min | Scrapes CHP CAD page |
-| `/api/chp-historical/cron` | Every 6 hours | Polls CKAN API |
+| `/api/bay-area-511/cron` | Once daily | Polls 511.org API |
+| `/api/caltrans/cron` | Once daily | Polls Caltrans CWWP2 API |
+| `/api/chp-cad/cron` | Once daily | Scrapes CHP CAD page |
+| `/api/chp-historical/cron` | Once daily | Polls CKAN API |
+| **`/api/calfire/cron`** | **Every 30 min** | **Polls CalFire API (active only)** |
 
 ### Utility Endpoints
 - `/api/*/poll?action=poll` - Manual trigger polling
 - `/api/*/poll?action=stats` - Get poll statistics
 - `/api/*/debug` - Debug endpoints for testing
+- `/api/*/cron` - CRON endpoints for CRON jobs and Vercel
+- `/api/*/seed` - Seed endpoints for populating db initially
 
 ---
 
@@ -109,6 +116,7 @@ The main dashboard features **color-coded layer toggle cards** that control map 
 | `bay_area_traffic_events` | 511.org events |
 | `cctv_cameras` | Traffic cameras |
 | `api_request_logs` | API monitoring |
+| **`calfire_incidents`** | **Wildfire incidents from CalFire API** |
 
 ---
 
@@ -242,6 +250,14 @@ The main dashboard now features **color-coded layer toggle cards** that control 
 │   │   │   ├── route.ts
 │   │   │   └── seed
 │   │   │       └── route.ts
+│   │   ├── calfire
+│   │   │   ├── cron
+│   │   │   │   └── route.ts
+│   │   │   ├── debug
+│   │   │   ├── poll
+│   │   │   │   └── route.ts
+│   │   │   ├── route.ts
+│   │   │   └── seed
 │   │   ├── caltrans
 │   │   │   ├── closures
 │   │   │   │   ├── [id]
@@ -272,7 +288,11 @@ The main dashboard now features **color-coded layer toggle cards** that control 
 │   │   │   └── seed
 │   │   │       └── route.ts
 │   │   ├── cctv
-│   │   │   └── route.ts
+│   │   │   ├── cron
+│   │   │   ├── debug
+│   │   │   ├── poll
+│   │   │   ├── route.ts
+│   │   │   └── seed
 │   │   ├── chp-cad
 │   │   │   ├── chp-cad-centers
 │   │   │   │   └── route.ts
@@ -301,6 +321,7 @@ The main dashboard now features **color-coded layer toggle cards** that control 
 │   │   │   └── seed
 │   │   │       └── route.ts
 │   │   ├── dashboard
+│   │   │   ├── route.ts
 │   │   │   └── stats
 │   │   │       └── route.ts
 │   │   ├── debug
@@ -335,6 +356,9 @@ The main dashboard now features **color-coded layer toggle cards** that control 
 │   │   ├── 511org
 │   │   │   ├── 511orgContent.tsx
 │   │   │   └── page.tsx
+│   │   ├── calfire
+│   │   │   ├── calfireContent.tsx
+│   │   │   └── page.tsx
 │   │   ├── caltrans
 │   │   │   ├── caltransContent.tsx
 │   │   │   ├── closure
@@ -348,8 +372,7 @@ The main dashboard now features **color-coded layer toggle cards** that control 
 │   │   │   ├── chpLiveContent.tsx
 │   │   │   └── page.tsx
 │   │   ├── layout.tsx
-│   │   ├── page-new-working-0.tsx
-│   │   ├── page-new.tsx
+│   │   ├── page-working.tsx
 │   │   └── page.tsx
 │   ├── debug
 │   │   ├── all-polls
@@ -416,13 +439,18 @@ The main dashboard now features **color-coded layer toggle cards** that control 
     │   ├── backfill-511-coords.ts
     │   ├── backfill-chp-cad-city-coords.ts
     │   ├── backfill-chp-cad-geocode.ts
+    │   ├── backfill-chp-historical.ts
     │   ├── check-511-coords.ts
     │   ├── check-511-data.ts
     │   ├── check-chp-cad-coords.ts
+    │   ├── check-chp-hist-db.ts
     │   ├── check-data-consistency.ts
     │   ├── compare-ui-vs-db.ts
     │   ├── database-health.ts
+    │   ├── debug-calfire-full.ts
+    │   ├── debug-calfire-raw.ts
     │   ├── diagnose-chp-cad.ts
+    │   ├── diagnose-chp-hist-dates.ts
     │   ├── test-chp-api.ts
     │   ├── test-ckan-direct.ts
     │   └── verify-data.ts
@@ -431,6 +459,8 @@ The main dashboard now features **color-coded layer toggle cards** that control 
     │   ├── CCTVPoller.ts
     │   ├── CHPCADPoller.ts
     │   ├── CHPPoller.ts
+    │   ├── CalFirePoller.ts
+    │   ├── CaltransPoller-info.ts
     │   ├── CaltransPoller.ts
     │   ├── MasterDataService.ts
     │   ├── TravelTimesPoller.ts
@@ -440,7 +470,7 @@ The main dashboard now features **color-coded layer toggle cards** that control 
         ├── index.ts
         └── locationCoords.ts
 
-82 directories, 134 files
+92 directories, 146 files
 
 ---
 
@@ -604,32 +634,43 @@ const handlePageChange = (newPage: number) => {
   // Map stays visible - no automatic scrolling
 };
 
-## 📋 Full Updated `CONTEXT.md` Structure (For Reference)
+---
 
-Your `CONTEXT.md` now includes:
+## 🔥 CalFire Incident Monitor
 
-1. **Tech Stack** - Next.js, Neon, Drizzle, shadcn/ui, Leaflet
-2. **Data Sources** - 5 sources with methods and status
-3. **Main Dashboard** - Layer toggle cards, eye icons, show/hide all
-4. **Service Dashboards** - 4 dashboards with expandable rows
-5. **API Routes** - Cron jobs, polling endpoints, showAll parameter
-6. **Database Schema** - 7 key tables
-7. **UI Components** - shadcn/ui components
-8. **Known Issues & Solutions** - 502 errors, CKAN limitation
-9. **Polling Control & Optimization** - Unified endpoint, cron management
-10. **CHP Historical Improvements** - Backfill script, incremental polling
-11. **CHP Historical Dashboard Pagination** - Dual pagination, map sync ← **NEW**
+### Overview
+The CalFire service monitors wildfire incidents across California using the official CAL FIRE incident API.
 
-## 🚀 Next Steps (Optional)
+### Features
+- **Real-time wildfire tracking** - Active and inactive incidents
+- **Statewide coverage** - All California counties
+- **Detailed incident data** - Acreage, containment, location, admin unit
+- **Historical records** - Complete incident history
+- **Map integration** - Visualize fire locations
+- **Filter by county and status** - Active, contained, extinguished
 
-You could apply the same pagination pattern to:
-- **511.org Dashboard** - Events table with map sync
-- **Caltrans Dashboard** - Lane closures table
-- **CHP Live Dashboard** - Incidents table
+### Polling Options
+| Endpoint | Action | Description |
+|----------|--------|-------------|
+| `/api/calfire/poll?action=poll` | Active only | Fast poll for cron jobs (active incidents only) |
+| `/api/calfire/poll?action=poll-norcal` | NorCal | All incidents (active+inactive) in Northern CA |
+| `/api/calfire/poll?action=poll-all` | Full | **All incidents statewide (no filter)** |
 
-But your current implementation for CHP Historical is a great template to reference!
+### API Routes
+| Endpoint | Purpose |
+|----------|---------|
+| `/api/calfire` | Main data endpoint (supports `?showAll=true`) |
+| `/api/calfire/poll` | Manual polling with actions |
+| `/api/calfire/cron` | Cron job endpoint (every 30 min) |
 
-Would you like me to help you apply this pagination pattern to the other dashboards as well?
+### Database Schema
+```typescript
+calfire_incidents {
+  id, uniqueId, name, type, status, county, location,
+  latitude, longitude, acresBurned, percentContained,
+  startedAt, updatedAt, extinguishedAt, adminUnit,
+  url, isActive, isCalFireIncident, rawData
+}
 
 ---
 

@@ -6,19 +6,34 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useTheme } from 'next-themes';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Flame, Activity, Sun, Moon, MapPin, AlertTriangle, BarChart3, Radio, Car } from 'lucide-react';
+import { 
+  Flame, Activity, Sun, Moon, MapPin, AlertTriangle, BarChart3, Radio, Car, 
+  Gauge, TrendingUp, Droplets 
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 export const dynamic = 'force-dynamic';
 
 const tabs = [
-  { path: '/dashboard', name: 'Overview', icon: MapPin },
-  { path: '/dashboard/chp-live', name: 'CHP Live', icon: AlertTriangle },
-  { path: '/dashboard/511org', name: 'Bay Area 511', icon: Radio },
-  { path: '/dashboard/caltrans', name: 'Caltrans', icon: Car },
-  { path: '/dashboard/calfire', name: 'CalFire', icon: Flame },
-  { path: '/dashboard/chp-historical', name: 'CHP Historical', icon: BarChart3 },
+  { path: '/dashboard', name: 'Overview', icon: MapPin, color: 'blue' },
+  { path: '/dashboard/chp-live', name: 'CHP Live', icon: AlertTriangle, color: 'red' },
+  { path: '/dashboard/511org', name: 'Bay Area 511', icon: Radio, color: 'emerald' },
+  { path: '/dashboard/caltrans', name: 'Caltrans', icon: Car, color: 'blue' },
+  { path: '/dashboard/calfire', name: 'CalFire', icon: Flame, color: 'orange' },
+  { path: '/dashboard/chp-historical', name: 'CHP Historical', icon: BarChart3, color: 'purple' },
 ];
+
+const getTabColor = (color: string) => {
+  const colors: Record<string, string> = {
+    blue: 'data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-950/30 data-[state=active]:text-blue-700 dark:data-[state=active]:text-blue-400',
+    red: 'data-[state=active]:bg-red-50 dark:data-[state=active]:bg-red-950/30 data-[state=active]:text-red-700 dark:data-[state=active]:text-red-400',
+    emerald: 'data-[state=active]:bg-emerald-50 dark:data-[state=active]:bg-emerald-950/30 data-[state=active]:text-emerald-700 dark:data-[state=active]:text-emerald-400',
+    orange: 'data-[state=active]:bg-orange-50 dark:data-[state=active]:bg-orange-950/30 data-[state=active]:text-orange-700 dark:data-[state=active]:text-orange-400',
+    purple: 'data-[state=active]:bg-purple-50 dark:data-[state=active]:bg-purple-950/30 data-[state=active]:text-purple-700 dark:data-[state=active]:text-purple-400',
+  };
+  return colors[color] || colors.blue;
+};
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -30,60 +45,101 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, []);
 
   if (!mounted) {
-    return <div className="min-h-screen bg-gray-50 dark:bg-gray-950" />;
+    return <div className="min-h-screen bg-background" />;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900">
-      <header className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-4 lg:px-4 py-4">
+    <div className="min-h-screen bg-gradient-to-br from-background to-muted/20">
+      {/* Header */}
+      <header className="bg-background/80 backdrop-blur-md border-b sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
+            {/* Logo and Title */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center shadow-lg">
                 <Activity className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-blue-400 dark:text-blue-400">
-                  Northern California Traffic Monitor
+                <h1 className="text-xl font-bold text-foreground">
+                  NorCal Traffic & Incident Monitor
                 </h1>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Real-time data from Caltrans, 511.org, and CHP</p>
+                <p className="text-xs text-muted-foreground">
+                  Real-time data from Caltrans, 511.org, CHP, and CalFire
+                </p>
               </div>
             </div>
+            
+            {/* Right side controls */}
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-                {theme === 'dark' ? <Sun className="w-4 h-4 text-yellow-500" /> : <Moon className="w-4 h-4" />}
-              </Button>
+              {/* Status Indicator */}
               <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-900/30">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-xs text-green-600 dark:text-green-400 font-medium">Live</span>
+                <span className="text-xs text-green-600 dark:text-green-400 font-medium">Live Data</span>
               </div>
+              
+              {/* Theme Toggle */}
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className="rounded-full"
+              >
+                {theme === 'dark' ? (
+                  <Sun className="w-4 h-4 text-yellow-500" />
+                ) : (
+                  <Moon className="w-4 h-4" />
+                )}
+              </Button>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-2 sm:px-2 lg:px-4 py-1">
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Tab Navigation */}
         <Tabs.Root value={pathname} className="mb-6">
-          <Tabs.List className="flex flex-wrap gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+          <Tabs.List className="flex flex-wrap gap-1.5 bg-muted/50 p-1 rounded-xl">
             {tabs.map((tab) => (
               <Tabs.Trigger
                 key={tab.path}
                 value={tab.path}
                 asChild
-                className="px-3 py-2.5 rounded-lg text-sm font-medium transition-all data-[state=active]:bg-white dark:data-[state=active]:bg-gray-900 data-[state=active]:shadow-sm"
+                className={`
+                  px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200
+                  text-muted-foreground hover:text-foreground hover:bg-muted
+                  data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-border
+                  ${getTabColor(tab.color)}
+                `}
               >
                 <Link href={tab.path} className="flex items-center gap-2">
                   <tab.icon className="w-4 h-4" />
                   <span className="hidden sm:inline">{tab.name}</span>
+                  {/* Optional: Add active indicator dot */}
+                  {pathname === tab.path && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-current ml-1" />
+                  )}
                 </Link>
               </Tabs.Trigger>
             ))}
           </Tabs.List>
         </Tabs.Root>
 
-        <div className="rounded-2xl overflow-hidden">
+        {/* Page Content */}
+        <div className="rounded-2xl bg-background/50 backdrop-blur-sm border shadow-sm overflow-hidden">
           {children}
         </div>
+        
+        {/* Footer */}
+        <footer className="mt-8 py-4 text-center text-xs text-muted-foreground border-t">
+          <p>
+            Data sourced from Caltrans CWWP2, 511.org, CHP CAD, CHP CKAN, and CalFire APIs.
+            Updated in real-time. Map data © OpenStreetMap contributors.
+          </p>
+          <p className="mt-1">
+            Last fetch times vary by source. Use refresh buttons to manually update.
+          </p>
+        </footer>
       </div>
     </div>
   );

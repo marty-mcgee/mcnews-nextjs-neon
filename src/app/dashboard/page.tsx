@@ -93,11 +93,11 @@ export default function DashboardPage() {
   
   // Layer visibility state
   const [layers, setLayers] = useState<LayerConfig[]>([
-    { id: 'chp-live', name: 'CHP Live', icon: <AlertTriangle className="w-4 h-4" />, color: 'red', bgColor: 'bg-red-50 dark:bg-red-950/30', activeColor: 'text-red-600 dark:text-red-400', activeBgColor: 'bg-red-100 dark:bg-red-900/50', enabled: true, count: 0 },
-    { id: 'bayarea511', name: '511.org', icon: <Radio className="w-4 h-4" />, color: 'emerald', bgColor: 'bg-emerald-50 dark:bg-emerald-950/30', activeColor: 'text-emerald-600 dark:text-emerald-400', activeBgColor: 'bg-emerald-100 dark:bg-emerald-900/50', enabled: true, count: 0 },
-    { id: 'caltrans', name: 'Caltrans', icon: <Car className="w-4 h-4" />, color: 'blue', bgColor: 'bg-blue-50 dark:bg-blue-950/30', activeColor: 'text-blue-600 dark:text-blue-400', activeBgColor: 'bg-blue-100 dark:bg-blue-900/50', enabled: true, count: 0 },
-    { id: 'calfire', name: 'CalFire', icon: <Flame className="w-4 h-4" />, color: 'orange', bgColor: 'bg-orange-50 dark:bg-orange-950/30', activeColor: 'text-orange-600 dark:text-orange-400', activeBgColor: 'bg-orange-100 dark:bg-orange-900/50', enabled: true, count: 0 },
-    { id: 'chp-historical', name: 'Historical', icon: <Calendar className="w-4 h-4" />, color: 'purple', bgColor: 'bg-purple-50 dark:bg-purple-950/30', activeColor: 'text-purple-600 dark:text-purple-400', activeBgColor: 'bg-purple-100 dark:bg-purple-900/50', enabled: false, count: 0 },
+    { id: 'chp-live', name: 'CHP Live', icon: <AlertTriangle className="w-4 h-4 text-red-500" />, color: 'red', bgColor: 'bg-red-50 dark:bg-red-950/30', activeColor: 'text-red-600 dark:text-red-400', activeBgColor: 'bg-red-100 dark:bg-red-900/50', enabled: true, count: 0 },
+    { id: 'bayarea511', name: '511.org', icon: <Radio className="w-4 h-4 text-emerald-500" />, color: 'emerald', bgColor: 'bg-emerald-50 dark:bg-emerald-950/30', activeColor: 'text-emerald-600 dark:text-emerald-400', activeBgColor: 'bg-emerald-100 dark:bg-emerald-900/50', enabled: true, count: 0 },
+    { id: 'caltrans', name: 'Caltrans', icon: <Car className="w-4 h-4 text-blue-500" />, color: 'blue', bgColor: 'bg-blue-50 dark:bg-blue-950/30', activeColor: 'text-blue-600 dark:text-blue-400', activeBgColor: 'bg-blue-100 dark:bg-blue-900/50', enabled: true, count: 0 },
+    { id: 'calfire', name: 'CalFire', icon: <Flame className="w-4 h-4 text-orange-500" />, color: 'orange', bgColor: 'bg-orange-50 dark:bg-orange-950/30', activeColor: 'text-orange-600 dark:text-orange-400', activeBgColor: 'bg-orange-100 dark:bg-orange-900/50', enabled: true, count: 0 },
+    { id: 'chp-historical', name: 'Historical', icon: <Calendar className="w-4 h-4 text-purple-500" />, color: 'purple', bgColor: 'bg-purple-50 dark:bg-purple-950/30', activeColor: 'text-purple-600 dark:text-purple-400', activeBgColor: 'bg-purple-100 dark:bg-purple-900/50', enabled: false, count: 0 },
   ]);
 
   // Pagination state for table
@@ -433,7 +433,7 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   {[
                     { value: 'all', label: 'All', icon: <MapPin className="w-3.5 h-3.5" /> },
-                    { value: 'caltrans', label: 'Caltrans', icon: <Car className="w-3.5 h-3.5" /> },
+                    { value: 'caltrans', label: 'Caltrans', icon: <Car className="w-3.5 h-3.5 text-blue-500" /> },
                     { value: 'bayarea511', label: '511.org', icon: <Radio className="w-3.5 h-3.5" /> },
                     { value: 'chp-live', label: 'CHP Live', icon: <AlertTriangle className="w-3.5 h-3.5" /> },
                     { value: 'chp-historical', label: 'Historical', icon: <Calendar className="w-3.5 h-3.5" /> },

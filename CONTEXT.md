@@ -674,6 +674,34 @@ calfire_incidents {
 
 ---
 
+### CalFire Incidents Schema (`calfire_incidents`)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | serial | Primary key |
+| `unique_id` | varchar(100) | Unique identifier from CalFire API |
+| `name` | varchar(200) | Fire name |
+| `type` | varchar(50) | Incident type (e.g., Wildfire) |
+| `status` | varchar(20) | Status (active, inactive, extinguished) |
+| `county` | varchar(100) | County where fire is located |
+| `location` | text | Detailed location description |
+| `latitude` | decimal(10,7) | Latitude coordinate |
+| `longitude` | decimal(10,7) | Longitude coordinate |
+| `acres_burned` | decimal(12,1) | Total acres burned |
+| `percent_contained` | decimal(5,1) | Containment percentage |
+| `started_at` | timestamp | When the fire started |
+| `updated_at` | timestamp | Last update from API |
+| `extinguished_at` | timestamp | When fire was extinguished |
+| `admin_unit` | varchar(200) | Responsible agency (e.g., CAL FIRE) |
+| `url` | text | Link to CalFire incident page |
+| `is_active` | boolean | Whether fire is currently active |
+| `is_calfire_incident` | boolean | Whether incident is CAL FIRE managed |
+| `raw_data` | jsonb | Complete original API response |
+| `fetched_at` | timestamp | When record was fetched |
+| `last_seen` | timestamp | Last time incident appeared in API |
+
+---
+
 ## [MM] CONTEXT.md
 
 ---

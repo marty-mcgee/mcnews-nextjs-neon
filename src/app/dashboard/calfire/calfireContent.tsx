@@ -359,7 +359,7 @@ export default function CalFireContent() {
                   <tr className="hover:bg-muted/50 cursor-pointer" onClick={() => toggleRowExpansion(incident.id)}>
                     <td className="px-4 py-3"><Info className="w-4 h-4 text-muted-foreground" /></td>
                     <td className="px-4 py-3 text-sm font-medium flex items-center gap-1">
-                      <Flame className="w-3 h-3 text-red-500" />
+                      <Flame className="w-3 h-3 text-orange-500" />
                       {incident.name}
                     </td>
                     <td className="px-4 py-3 text-sm">{incident.county || 'N/A'}</td>

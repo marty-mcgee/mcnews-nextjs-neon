@@ -530,7 +530,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Map Legend */}
-      <div className="flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
+      {/* <div className="flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
         {layers.map((layer) => (
           layer.enabled && (
             <div key={layer.id} className="flex items-center gap-1.5">
@@ -543,7 +543,7 @@ export default function DashboardPage() {
           <MapPin className="w-3 h-3" />
           <span>Click any marker to view service details</span>
         </div>
-      </div>
+      </div> */}
 
       {/* Master Map */}
       <Card>
